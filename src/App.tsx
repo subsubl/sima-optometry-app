@@ -23,6 +23,7 @@ export const App: React.FC = () => {
     resetSession,
     isConnected,
     networkInfo,
+    refreshNetworkInfo,
   } = useExamSync();
 
   useEffect(() => {
@@ -58,6 +59,7 @@ export const App: React.FC = () => {
       isConnected={isConnected}
       networkInfo={networkInfo}
       onOpenPatientView={() => switchRole('patient')}
+      onRefreshNetworkInfo={refreshNetworkInfo}
     />
   );
 };

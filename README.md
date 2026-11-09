@@ -65,8 +65,27 @@ Cycle between all 7 clinical test decks using the **`←` / `→` (Left / Right 
 npm install
 npm start
 ```
-- **Doctor Console**: `http://localhost:3020/#/doctor` (or scan the **Pair Remote** QR code from any tablet/phone on the clinic Wi-Fi)
-- **Patient Display**: `http://localhost:3020/#/patient`
+- **Doctor Console**: `http://localhost:3020/#/doctor` (or `http://<LAN_IP>:3020/#/doctor`)
+- **Patient Display**: `http://localhost:3020/#/patient` (or `http://<LAN_IP>:3020/#/patient`)
+
+### LAN Tablet & iPad Remote Pairing
+To use an iPad, tablet, or phone as a wireless controller in the exam lane:
+1. Ensure both the computer running SIMA and the tablet are connected to the same Wi-Fi / local network.
+2. Click **Pair Remote** in the top navigation bar of the Doctor Console.
+3. Scan the displayed QR code or navigate to `http://<LAN_IP>:3020/#/doctor`.
+
+> [!NOTE]
+> **Linux Firewall Note**: If your computer runs Ubuntu / Pop!_OS and the firewall (`ufw`) is enabled, allow incoming connections to port 3020:
+> ```bash
+> sudo ufw allow 3020/tcp
+> ```
+
+### Docker Deployment (Instant LAN Access)
+To run containerized with automatic network bridging:
+```bash
+docker compose up -d
+```
+The server will be immediately accessible to all LAN devices at `http://<LAN_IP>:3020`.
 
 ### Desktop App (Electron Multi-Monitor Mode)
 ```bash

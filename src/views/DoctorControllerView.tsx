@@ -43,6 +43,7 @@ interface DoctorControllerViewProps {
   isConnected: boolean;
   networkInfo: NetworkPairingInfo | null;
   onOpenPatientView: () => void;
+  onRefreshNetworkInfo?: (ip?: string) => void;
 }
 
 const OPTOTYPE_KEYS: Array<{ id: OptotypeSetId; label: string; sample: string }> = [
@@ -74,6 +75,7 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
   isConnected,
   networkInfo,
   onOpenPatientView,
+  onRefreshNetworkInfo,
 }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isQrOpen, setIsQrOpen] = useState(false);
@@ -1329,6 +1331,7 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
         isOpen={isQrOpen}
         onClose={() => setIsQrOpen(false)}
         networkInfo={networkInfo}
+        onSelectIp={onRefreshNetworkInfo}
       />
     </div>
   );

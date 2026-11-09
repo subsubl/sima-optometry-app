@@ -1,0 +1,10 @@
+services:
+  sima-optometry:
+    build: .
+    image: sima-optometry-app:latest
+    container_name: sima-optometry-app
+    restart: unless-stopped
+    ports:
+      - "3020:3020"
+    environment:
+      - PORT=3020

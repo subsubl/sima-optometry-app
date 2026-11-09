@@ -10,19 +10,42 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
- * Finds the primary non-internal IPv4 address of the clinic lane machine.
+ * Finds all non-internal IPv4 addresses, separating physical network adapters
+ * (Ethernet, Wi-Fi) from virtual container bridges (Docker, libvirt, Tailscale).
  */
-export function getLocalLanIp() {
+export function getAllLanIps() {
   const interfaces = os.networkInterfaces();
+  const physicalIps = [];
+  const virtualIps = [];
+
+  const VIRTUAL_REGEX = /^(docker|br-|veth|virbr|vmnet|vboxnet|tun|tap|tailscale|wg)/i;
+
   for (const name of Object.keys(interfaces)) {
     const netList = interfaces[name] || [];
+    const isVirtual = VIRTUAL_REGEX.test(name);
+
     for (const net of netList) {
       if (net.family === 'IPv4' && !net.internal) {
-        return net.address;
+        if (net.address.startsWith('127.')) continue;
+        const entry = { name, address: net.address };
+        if (isVirtual) {
+          virtualIps.push(entry);
+        } else {
+          physicalIps.push(entry);
+        }
       }
     }
   }
-  return '127.0.0.1';
+
+  return physicalIps.length > 0 ? physicalIps : virtualIps;
+}
+
+/**
+ * Finds the primary physical non-internal IPv4 address of the clinic machine.
+ */
+export function getLocalLanIp() {
+  const ips = getAllLanIps();
+  return ips.length > 0 ? ips[0].address : '127.0.0.1';
 }
 
 export function createOptiSuiteServer({
@@ -36,10 +59,38 @@ export function createOptiSuiteServer({
   let currentExamState = null;
   let boundPort = port;
 
+  // CORS middleware for cross-origin LAN access from tablets / remote browsers
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   app.use(express.json());
 
-  app.get('/api/network-info', async (_req, res) => {
-    const lanIp = getLocalLanIp();
+  app.get('/api/network-info', async (req, res) => {
+    const lanAdapters = getAllLanIps();
+    const allIps = lanAdapters.map((a) => a.address);
+
+    const hostHeader = req.headers.host || '';
+    const incomingHost = hostHeader.split(':')[0];
+    const isIncomingLan =
+      incomingHost &&
+      incomingHost !== 'localhost' &&
+      incomingHost !== '127.0.0.1' &&
+      incomingHost !== '::1';
+
+    const requestedIp = req.query.ip ? String(req.query.ip).trim() : null;
+    const lanIp =
+      requestedIp ||
+      (isIncomingLan
+        ? incomingHost
+        : process.env.HOST_IP || allIps[0] || '127.0.0.1');
+
     const uiPort = process.env.VITE_PORT ? Number(process.env.VITE_PORT) : boundPort;
     const doctorUrl = `http://${lanIp}:${uiPort}/#/doctor`;
     const patientUrl = `http://${lanIp}:${uiPort}/#/patient`;
@@ -60,6 +111,8 @@ export function createOptiSuiteServer({
 
     res.json({
       lanIp,
+      allLanIps: allIps,
+      adapters: lanAdapters,
       port: uiPort,
       doctorUrl,
       patientUrl,

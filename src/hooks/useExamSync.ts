@@ -4,8 +4,15 @@ import { DEFAULT_EXAM_STATE } from '../engine/examDefaults';
 
 const CALIBRATION_STORAGE_KEY = 'optisuite_2020_calibration_v1';
 
+export interface NetworkAdapterInfo {
+  name: string;
+  address: string;
+}
+
 export interface NetworkPairingInfo {
   lanIp: string;
+  allLanIps?: string[];
+  adapters?: NetworkAdapterInfo[];
   port: number;
   doctorUrl: string;
   patientUrl: string;
@@ -38,9 +45,12 @@ export function useExamSync() {
   const bcRef = useRef<BroadcastChannel | null>(null);
 
   // Fetch LAN IP and QR code from local server
-  const refreshNetworkInfo = useCallback(async () => {
+  const refreshNetworkInfo = useCallback(async (requestedIp?: string) => {
     try {
-      const res = await fetch('/api/network-info');
+      const url = requestedIp
+        ? `/api/network-info?ip=${encodeURIComponent(requestedIp)}`
+        : '/api/network-info';
+      const res = await fetch(url);
       if (res.ok) {
         const data: NetworkPairingInfo = await res.json();
         setNetworkInfo(data);
@@ -50,6 +60,7 @@ export function useExamSync() {
       const origin = window.location.origin;
       setNetworkInfo({
         lanIp: window.location.hostname,
+        allLanIps: [window.location.hostname],
         port: Number(window.location.port) || 80,
         doctorUrl: `${origin}/#/doctor`,
         patientUrl: `${origin}/#/patient`,
