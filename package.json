@@ -1,0 +1,39 @@
+{
+  "name": "sima-optometry-app",
+  "version": "1.0.0",
+  "description": "SIMA Optometry App — Clinical Digital Visual Acuity & Optometric Examination Console",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "node server/dev.mjs",
+    "dev:vite": "vite",
+    "build": "tsc -b && vite build",
+    "start": "npm run build && node server/index.mjs",
+    "electron:dev": "ELECTRON_DEV=1 node server/dev.mjs",
+    "electron:start": "npm run build && electron .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "lucide-react": "^0.469.0",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.2",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/ws": "^8.5.13",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.1",
+    "tailwindcss": "^4.0.0",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8"
+  }
+}
