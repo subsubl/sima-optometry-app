@@ -6,6 +6,7 @@ import {
   formatAcuityNotation,
   generateLineOptotypes,
 } from '../../engine/acuityMath';
+import { computeFullChartWindow } from '../../engine/chartPagination';
 import { OptotypeSvg } from '../optotypes/OptotypeSvg';
 import {
   AstigmatismDisplay,
@@ -28,6 +29,94 @@ export const ChartStage: React.FC<ChartStageProps> = ({
   scaleFactor = 1,
   onUpdateState,
 }) => {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [containerHeight, setContainerHeight] = React.useState<number>(() => {
+    if (typeof window !== 'undefined' && window.innerHeight) {
+      return window.innerHeight;
+    }
+    return 800;
+  });
+
+  const [currentWindow, setCurrentWindow] = React.useState<{
+    pageLogMARs: readonly number[];
+    startIndex: number;
+    endIndex: number;
+  } | undefined>(undefined);
+
+  React.useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const updateSize = () => {
+      if (el.clientHeight > 0) {
+        setContainerHeight(el.clientHeight);
+      }
+    };
+    updateSize();
+
+    const ro = new ResizeObserver(() => {
+      updateSize();
+    });
+    ro.observe(el);
+
+    window.addEventListener('resize', updateSize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateSize);
+    };
+  }, []);
+
+  const isEtdrs = state.activeCategory === 'etdrs_wizard';
+  const targetLogMAR = isEtdrs ? state.etdrsWizard.currentLogMAR : state.activeLogMAR;
+  const optotypeSet = isEtdrs ? 'sloan' : state.optotypeSet;
+  const isolationMode = isEtdrs
+    ? state.etdrsWizard.phase === 'screening'
+      ? 'single'
+      : 'line'
+    : state.isolationMode;
+
+  const fullChartLayout = React.useMemo(() => {
+    return computeFullChartWindow({
+      calibration: state.calibration,
+      scaleFactor,
+      containerHeight,
+      targetLogMAR,
+      hasPatientNotation: isPatientScreen && state.showNotationOnPatient,
+      currentWindow,
+    });
+  }, [
+    state.calibration,
+    scaleFactor,
+    containerHeight,
+    targetLogMAR,
+    isPatientScreen,
+    state.showNotationOnPatient,
+    currentWindow,
+  ]);
+
+  React.useEffect(() => {
+    if (isolationMode === 'full') {
+      if (
+        !currentWindow ||
+        currentWindow.pageLogMARs !== fullChartLayout.pageLogMARs ||
+        currentWindow.startIndex !== fullChartLayout.startIndex ||
+        currentWindow.endIndex !== fullChartLayout.endIndex
+      ) {
+        setCurrentWindow({
+          pageLogMARs: fullChartLayout.pageLogMARs,
+          startIndex: fullChartLayout.startIndex,
+          endIndex: fullChartLayout.endIndex,
+        });
+      }
+    }
+  }, [
+    isolationMode,
+    fullChartLayout.pageLogMARs,
+    fullChartLayout.startIndex,
+    fullChartLayout.endIndex,
+    currentWindow,
+  ]);
+
   if (state.isBlackout) {
     return (
       <div className="w-full h-full bg-black flex items-center justify-center select-none">
@@ -85,15 +174,6 @@ export const ChartStage: React.FC<ChartStageProps> = ({
       </div>
     );
   }
-
-  const isEtdrs = state.activeCategory === 'etdrs_wizard';
-  const targetLogMAR = isEtdrs ? state.etdrsWizard.currentLogMAR : state.activeLogMAR;
-  const optotypeSet = isEtdrs ? 'sloan' : state.optotypeSet;
-  const isolationMode = isEtdrs
-    ? state.etdrsWizard.phase === 'screening'
-      ? 'single'
-      : 'line'
-    : state.isolationMode;
 
   const fgColor = state.invertPolarity ? '#FFFFFF' : '#000000';
   const baseBgColor = state.invertPolarity ? '#000000' : '#FFFFFF';
@@ -243,24 +323,10 @@ export const ChartStage: React.FC<ChartStageProps> = ({
       return renderWithCrowding(rowContent, activePx);
     }
 
-    // FULL MULTI-LINE CHART (Two Standard Clinical Pages: Screening Page 1 vs Refraction Page 2)
-    // Page 1: 20/200 (1.0) down to 20/40 (0.3) — 7 rows
-    // Page 2: 20/50 (0.4) down to 20/10 (-0.3) — 8 rows
-    // Overlapping 20/50 & 20/40 allows stepping up/down without changing pages.
-    const PAGE_LOW_VISION = [1.3, 1.2, 1.1, 1.0, 0.8, 0.6];
-    const PAGE_1_LARGE = [1.0, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3];
-    const PAGE_2_REFRACTION = [0.4, 0.3, 0.2, 0.1, 0.0, -0.1, -0.2, -0.3];
-
-    let pageLogMARs: number[];
-    if (targetLogMAR > 1.0) {
-      pageLogMARs = PAGE_LOW_VISION;
-    } else if (targetLogMAR >= 0.4) {
-      pageLogMARs = PAGE_1_LARGE;
-    } else {
-      pageLogMARs = PAGE_2_REFRACTION;
-    }
-
-    const visibleLines = pageLogMARs.map((lm) => {
+    // FULL MULTI-LINE CHART with Viewport Height Clipping Prevention
+    // Only completely visible rows that fit within the screen height are rendered.
+    // The active row is underlined in red, and the page remains stationary while stepping.
+    const visibleLines = fullChartLayout.visibleLogMARs.map((lm) => {
       const match = ACUITY_LADDER.find((l) => Math.abs(l.logMAR - lm) < 0.01);
       return (
         match || {
@@ -275,7 +341,10 @@ export const ChartStage: React.FC<ChartStageProps> = ({
     });
 
     return (
-      <div className="flex flex-col items-center justify-center gap-3 sm:gap-4 max-h-full py-2">
+      <div
+        className="flex flex-col items-center justify-center max-h-full py-2"
+        style={{ gap: `${fullChartLayout.rowGap}px` }}
+      >
         {visibleLines.map((lineSpec) => {
           const linePx = Math.max(
             4,
@@ -338,6 +407,7 @@ export const ChartStage: React.FC<ChartStageProps> = ({
 
   return (
     <div
+      ref={containerRef}
       className="relative w-full h-full flex items-center justify-center overflow-hidden select-none"
       style={{ backgroundColor: baseBgColor }}
     >
