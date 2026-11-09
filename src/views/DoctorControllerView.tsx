@@ -19,14 +19,17 @@ import {
   generateLineOptotypes,
   getDoctorCheatLabel,
 } from '../engine/acuityMath';
-import { WORKFLOW_PRESETS } from '../engine/examDefaults';
+import { DEFAULT_D15_SHUFFLED, WORKFLOW_PRESETS } from '../engine/examDefaults';
 import { NetworkPairingInfo } from '../hooks/useExamSync';
 import {
   CLINICAL_CATEGORY_ORDER,
   useClinicalHotkeys,
 } from '../hooks/useClinicalHotkeys';
 import { ChartStage } from '../components/tests/ChartStage';
-import { ISHIHARA_PLATES } from '../components/tests/ClinicalModules';
+import {
+  analyzeD15Arrangement,
+  ISHIHARA_PLATES,
+} from '../components/tests/ClinicalModules';
 import { OptotypeSvg } from '../components/optotypes/OptotypeSvg';
 import { CalibrationDialog } from '../components/modals/CalibrationDialog';
 import { PairingQrDialog } from '../components/modals/PairingQrDialog';
@@ -124,10 +127,12 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
     updateState({ activeCategory: CLINICAL_CATEGORY_ORDER[nextIdx] });
   };
 
+  // Automated eETDRS Staircase & Standard Line Scoring Handler
   const handleLetterScoreTap = (idx: number) => {
     if (state.activeCategory === 'etdrs_wizard') {
       updateState((prev) => {
-        const key = prev.etdrsWizard.currentLogMAR.toFixed(1);
+        const curLog = prev.etdrsWizard.currentLogMAR;
+        const key = curLog.toFixed(1);
         const existing = prev.etdrsWizard.lineScores[key] || [
           'untested',
           'untested',
@@ -142,19 +147,41 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
 
         const nextLineScores = { ...prev.etdrsWizard.lineScores, [key]: nextRow };
         const currentLineCorrect = nextRow.filter((s) => s === 'correct').length;
+        const currentLineTested = nextRow.filter((s) => s !== 'untested').length;
         const missedOnCurrent = 5 - currentLineCorrect;
-        const estimatedLogMAR = Number(
-          (prev.etdrsWizard.currentLogMAR + missedOnCurrent * 0.02).toFixed(2)
+        const estimatedLogMAR = Number((curLog + missedOnCurrent * 0.02).toFixed(2));
+        const estimatedLetterScore = Math.max(
+          0,
+          Math.min(100, Math.round(85 - 50 * estimatedLogMAR))
         );
-        const estimatedLetterScore = Math.round(85 - 50 * estimatedLogMAR);
+
+        let nextLogMAR = curLog;
+        let nextPhase = prev.etdrsWizard.phase;
+        let nextSeed = prev.randomSeed;
+
+        // Automated Staircase Rule once all 5 letters on the line are graded:
+        // >= 3/5 correct -> automatically descend 0.1 LogMAR to smaller line;
+        // < 3/5 correct -> stopping rule reached ('completed').
+        if (currentLineTested === 5) {
+          if (currentLineCorrect >= 3 && curLog > -0.3) {
+            nextLogMAR = Number((curLog - 0.1).toFixed(1));
+            nextPhase = 'threshold';
+            nextSeed = prev.randomSeed + 1;
+          } else {
+            nextPhase = 'completed';
+          }
+        }
 
         return {
           ...prev,
+          randomSeed: nextSeed,
           etdrsWizard: {
             ...prev.etdrsWizard,
+            phase: nextPhase,
+            currentLogMAR: nextLogMAR,
             lineScores: nextLineScores,
             finalLogMAR: estimatedLogMAR,
-            totalLetterScore: Math.max(0, Math.min(100, estimatedLetterScore)),
+            totalLetterScore: estimatedLetterScore,
           },
         };
       });
@@ -173,11 +200,55 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
     });
   };
 
+  // Mark all 5 correct on active line (auto-advances in eETDRS mode)
+  const handleMarkAllCorrect = () => {
+    if (state.activeCategory === 'etdrs_wizard') {
+      updateState((prev) => {
+        const curLog = prev.etdrsWizard.currentLogMAR;
+        const key = curLog.toFixed(1);
+        const nextRow: LetterScoreStatus[] = [
+          'correct',
+          'correct',
+          'correct',
+          'correct',
+          'correct',
+        ];
+        const nextLineScores = { ...prev.etdrsWizard.lineScores, [key]: nextRow };
+        const estimatedLogMAR = Number(curLog.toFixed(2));
+        const estimatedLetterScore = Math.max(
+          0,
+          Math.min(100, Math.round(85 - 50 * estimatedLogMAR))
+        );
+        const canDescend = curLog > -0.3;
+
+        return {
+          ...prev,
+          randomSeed: canDescend ? prev.randomSeed + 1 : prev.randomSeed,
+          etdrsWizard: {
+            ...prev.etdrsWizard,
+            phase: canDescend ? 'threshold' : 'completed',
+            currentLogMAR: canDescend ? Number((curLog - 0.1).toFixed(1)) : curLog,
+            lineScores: nextLineScores,
+            finalLogMAR: estimatedLogMAR,
+            totalLetterScore: estimatedLetterScore,
+          },
+        };
+      });
+      return;
+    }
+
+    updateState({
+      currentLineScores: ['correct', 'correct', 'correct', 'correct', 'correct'],
+    });
+  };
+
+  const d15Analysis = analyzeD15Arrangement(state.d15ArrangedCaps || [0]);
+
   return (
     <div className="min-h-dvh w-full bg-[#08090C] text-[#E2E8F0] flex flex-col select-none font-sans">
       {/* TOP INSTRUMENT CONSOLE DECK */}
       <header className="bg-[#0D0F14] border-b border-[#1E2330] px-3 py-1.5 flex flex-wrap items-center justify-between gap-2">
-        {/* Brand Identity (Clean, Zero Slop) */}
+        {/* Brand Identity */}
         <div className="flex items-center gap-2.5 pr-2">
           <div className="w-7 h-7 bg-[#151922] border border-[#2D3446] flex items-center justify-center">
             <div className="w-3.5 h-3.5 border-2 border-amber-500 rounded-full flex items-center justify-center">
@@ -236,7 +307,6 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
 
         {/* Right Hardware Controls */}
         <div className="flex items-center gap-1.5 font-mono text-[11px]">
-          {/* Notation Segmented Switch */}
           <div className="flex bg-[#07080B] border border-[#1E2330] p-0.5">
             {(
               [
@@ -315,7 +385,6 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
             </span>
           </div>
 
-          {/* Tactile Up/Down Rocker Keys */}
           <div className="grid grid-cols-2 gap-1.5 font-mono">
             <button
               type="button"
@@ -333,7 +402,6 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
             </button>
           </div>
 
-          {/* 17-Step Acuity Matrix Keypad */}
           <div className="grid grid-cols-2 gap-1 flex-1 content-start font-mono">
             {ACUITY_LADDER.map((spec) => {
               const isSelected = Math.abs(spec.logMAR - activeLogMAR) < 0.01;
@@ -396,7 +464,10 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                 {scoredAcuity.label}
               </span>
               <span className="text-xs text-neutral-400">
-                LOG {scoredAcuity.interpolatedLogMAR >= 0 ? `+${scoredAcuity.interpolatedLogMAR.toFixed(2)}` : scoredAcuity.interpolatedLogMAR.toFixed(2)}
+                LOG{' '}
+                {scoredAcuity.interpolatedLogMAR >= 0
+                  ? `+${scoredAcuity.interpolatedLogMAR.toFixed(2)}`
+                  : scoredAcuity.interpolatedLogMAR.toFixed(2)}
               </span>
             </div>
 
@@ -417,9 +488,7 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                 </span>
               )}
               {state.invertPolarity && (
-                <span className="px-2 py-0.5 bg-white text-black font-bold">
-                  INVERT
-                </span>
+                <span className="px-2 py-0.5 bg-white text-black font-bold">INVERT</span>
               )}
             </div>
           </div>
@@ -430,15 +499,98 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
               className="relative w-full mx-auto overflow-hidden border border-[#2A3042] bg-black"
               style={{ aspectRatio: '16 / 10' }}
             >
-              {/* Subtle Corner Reticle Marks */}
               <div className="absolute top-1.5 left-1.5 w-2.5 h-2.5 border-t border-l border-neutral-500/40 z-20 pointer-events-none" />
               <div className="absolute top-1.5 right-1.5 w-2.5 h-2.5 border-t border-r border-neutral-500/40 z-20 pointer-events-none" />
               <div className="absolute bottom-1.5 left-1.5 w-2.5 h-2.5 border-b border-l border-neutral-500/40 z-20 pointer-events-none" />
               <div className="absolute bottom-1.5 right-1.5 w-2.5 h-2.5 border-b border-r border-neutral-500/40 z-20 pointer-events-none" />
 
-              <ChartStage state={state} isPatientScreen={false} scaleFactor={0.44} />
+              <ChartStage
+                state={state}
+                isPatientScreen={false}
+                scaleFactor={0.44}
+                onUpdateState={updateState}
+              />
             </div>
           </div>
+
+          {/* AUTOMATED eETDRS STAIRCASE TELEMETRY STRIP */}
+          {state.activeCategory === 'etdrs_wizard' && (
+            <div className="bg-[#0D0F14] border border-[#1E2330] px-3 py-2 flex flex-wrap items-center justify-between gap-2 font-mono text-xs">
+              <div className="flex items-center gap-2">
+                <div className="flex border border-[#282E3E]">
+                  {(['OD', 'OS', 'OU'] as const).map((eye) => (
+                    <button
+                      key={eye}
+                      type="button"
+                      onClick={() =>
+                        updateState((prev) => ({
+                          ...prev,
+                          etdrsWizard: { ...prev.etdrsWizard, testedEye: eye },
+                        }))
+                      }
+                      className={`px-2 py-0.5 text-[10px] font-bold cursor-pointer ${
+                        state.etdrsWizard.testedEye === eye
+                          ? 'bg-amber-500 text-black'
+                          : 'bg-[#131720] text-neutral-400'
+                      }`}
+                    >
+                      {eye}
+                    </button>
+                  ))}
+                </div>
+                <span
+                  className={`px-2 py-0.5 text-[10px] font-bold uppercase border ${
+                    state.etdrsWizard.phase === 'completed'
+                      ? 'bg-emerald-950/90 border-emerald-500 text-emerald-300'
+                      : 'bg-[#141822] border-[#282E3E] text-amber-400'
+                  }`}
+                >
+                  {state.etdrsWizard.phase === 'completed'
+                    ? '● ENDPOINT LOCKED (<3/5 OR MIN)'
+                    : 'STAIRCASE AUTO-DESCENT (≥3/5)'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-[11px] text-neutral-300">
+                  FINAL LOGMAR:{' '}
+                  <strong className="text-emerald-400">
+                    {state.etdrsWizard.finalLogMAR !== null
+                      ? state.etdrsWizard.finalLogMAR.toFixed(2)
+                      : '—'}
+                  </strong>
+                </span>
+                <span className="text-[11px] text-neutral-300">
+                  ETDRS LETTERS:{' '}
+                  <strong className="text-amber-400">
+                    {state.etdrsWizard.totalLetterScore !== null
+                      ? `${state.etdrsWizard.totalLetterScore}/100`
+                      : '—'}
+                  </strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateState((prev) => ({
+                      ...prev,
+                      randomSeed: prev.randomSeed + 1,
+                      etdrsWizard: {
+                        phase: 'threshold',
+                        currentLogMAR: 0.4,
+                        lineScores: {},
+                        finalLogMAR: null,
+                        totalLetterScore: null,
+                        testedEye: prev.etdrsWizard.testedEye,
+                      },
+                    }))
+                  }
+                  className="px-2 py-0.5 bg-[#171C28] hover:bg-[#22293A] border border-[#2C3347] text-[10px] text-neutral-300 uppercase cursor-pointer"
+                >
+                  RESTART
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Bottom Center Deck: Target Answer Keystrip OR Module Control Deck */}
           {(state.activeCategory === 'va_chart' ||
@@ -479,17 +631,7 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                   )}
                   <button
                     type="button"
-                    onClick={() =>
-                      updateState({
-                        currentLineScores: [
-                          'correct',
-                          'correct',
-                          'correct',
-                          'correct',
-                          'correct',
-                        ],
-                      })
-                    }
+                    onClick={handleMarkAllCorrect}
                     className="px-2 py-0.5 bg-[#12221D] hover:bg-[#193029] border border-emerald-600/50 text-emerald-300 cursor-pointer"
                   >
                     ALL ✓
@@ -797,7 +939,7 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
             </div>
           )}
 
-          {/* MACULAR & COLOR VISION DECK */}
+          {/* MACULAR & COLOR VISION DECK (With Interactive Farnsworth D-15 Controls) */}
           {state.activeCategory === 'macular_color' && (
             <div className="bg-[#0D0F14] border border-[#1E2330] p-3 space-y-2.5 font-mono">
               <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
@@ -849,13 +991,53 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                   </div>
                 </div>
               )}
+
+              {state.macularColorMode === 'color_d15' && (
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-[#090B0E] p-2 border border-[#1E2330] text-[11px]">
+                  <span
+                    className={
+                      d15Analysis.crossings > 0
+                        ? 'text-red-400 font-bold'
+                        : 'text-emerald-400 font-bold'
+                    }
+                  >
+                    {d15Analysis.status}
+                  </span>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateState({
+                          d15ArrangedCaps: [0],
+                          d15RemainingCaps: [...DEFAULT_D15_SHUFFLED],
+                        })
+                      }
+                      className="px-2.5 py-1 bg-[#131720] hover:bg-[#1E2433] border border-[#252B3B] text-neutral-200 uppercase cursor-pointer"
+                    >
+                      SHUFFLE CAPS
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateState({
+                          d15ArrangedCaps: Array.from({ length: 16 }, (_, i) => i),
+                          d15RemainingCaps: [],
+                        })
+                      }
+                      className="px-2.5 py-1 bg-[#131720] hover:bg-[#1E2433] border border-[#252B3B] text-amber-400 uppercase cursor-pointer"
+                    >
+                      SOLVE 1–15 REF
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>
 
         {/* RIGHT BAY (4 cols): OPTOTYPE MATRIX, MASKING, CROWDING & ROUTINE KEYS */}
         <section className="lg:col-span-4 flex flex-col gap-2 font-mono">
-          {/* 1. OPTOTYPE FAMILY KEYGRID (With Live Vector Glyph Previews) */}
+          {/* 1. OPTOTYPE FAMILY KEYGRID */}
           <div className="bg-[#0D0F14] border border-[#1E2330] p-2.5 space-y-2">
             <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400 border-b border-[#1A1E29] pb-1">
               <span>OPTOTYPE SELECTOR</span>
@@ -904,6 +1086,53 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                 );
               })}
             </div>
+
+            {/* DYOP SPIN DIRECTION & RPM SPEED SUB-DECK */}
+            {state.optotypeSet === 'dyop' && (
+              <div className="pt-2 border-t border-[#1A1E29] flex items-center justify-between gap-2 text-[10px]">
+                <div className="flex border border-[#252B3B]">
+                  <button
+                    type="button"
+                    onClick={() => updateState({ dyopDirection: 'cw' })}
+                    className={`px-2.5 py-1 font-bold uppercase cursor-pointer ${
+                      state.dyopDirection === 'cw'
+                        ? 'bg-amber-500 text-black'
+                        : 'bg-[#12151E] text-neutral-400'
+                    }`}
+                  >
+                    CW ↻
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateState({ dyopDirection: 'ccw' })}
+                    className={`px-2.5 py-1 font-bold uppercase cursor-pointer ${
+                      state.dyopDirection === 'ccw'
+                        ? 'bg-amber-500 text-black'
+                        : 'bg-[#12151E] text-neutral-400'
+                    }`}
+                  >
+                    CCW ↺
+                  </button>
+                </div>
+
+                <div className="flex gap-1">
+                  {[20, 40, 60].map((rpm) => (
+                    <button
+                      key={rpm}
+                      type="button"
+                      onClick={() => updateState({ dyopRpm: rpm })}
+                      className={`px-2 py-1 border font-bold cursor-pointer ${
+                        state.dyopRpm === rpm
+                          ? 'bg-emerald-500 text-black border-emerald-400'
+                          : 'bg-[#12151E] border-[#212634] text-neutral-400'
+                      }`}
+                    >
+                      {rpm} RPM
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 2. APERTURE & ISOLATION MASKING KEYPAD */}
@@ -948,7 +1177,6 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
               })}
             </div>
 
-            {/* Crowding Contour Bars */}
             <div className="pt-1">
               <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-400 mb-1">
                 CONTOUR CROWDING BARS [KEY: C]
@@ -990,7 +1218,11 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
               {(
                 [
                   { id: 'none', label: 'CLEAR', dot: 'bg-neutral-400' },
-                  { id: 'split', label: 'R/G SPLIT', dot: 'bg-gradient-to-r from-red-500 to-green-500' },
+                  {
+                    id: 'split',
+                    label: 'R/G SPLIT',
+                    dot: 'bg-gradient-to-r from-red-500 to-green-500',
+                  },
                   { id: 'red_only', label: 'RED 625', dot: 'bg-red-500' },
                   { id: 'green_only', label: 'GRN 535', dot: 'bg-green-500' },
                 ] as Array<{ id: DuochromeOverlay; label: string; dot: string }>
@@ -1074,7 +1306,6 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
         </section>
       </main>
 
-      {/* Native <dialog> Modals */}
       <CalibrationDialog
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}

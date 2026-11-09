@@ -17,34 +17,31 @@ import {
 
 interface ChartStageProps {
   state: ExamState;
-  /** Whether this is the Patient Screen (applies mirror transform & privacy rules) or Doctor Mirror Preview */
   isPatientScreen: boolean;
-  /** Scale multiplier (1.0 on real Patient Display, smaller on Doctor Controller preview) */
   scaleFactor?: number;
+  onUpdateState?: (updater: Partial<ExamState> | ((prev: ExamState) => ExamState)) => void;
 }
 
 export const ChartStage: React.FC<ChartStageProps> = ({
   state,
   isPatientScreen,
   scaleFactor = 1,
+  onUpdateState,
 }) => {
-  // 1. Blackout / Rest Screen
   if (state.isBlackout) {
     return (
       <div className="w-full h-full bg-black flex items-center justify-center select-none">
         {!isPatientScreen && (
           <span className="text-xs font-mono uppercase tracking-widest text-neutral-500">
-            Patient Display Blackout (Rest Mode)
+            PATIENT DISPLAY BLACKOUT
           </span>
         )}
       </div>
     );
   }
 
-  // Wrapper transform for Folded/Mirrored Exam Lane (applied ONLY to the physical Patient Display)
   const mirrorClass = isPatientScreen && state.calibration.isMirroredRoom ? '-scale-x-100' : '';
 
-  // 2. Specialized Clinical Modules
   if (state.activeCategory === 'duochrome_balance') {
     return (
       <div className={`w-full h-full ${mirrorClass}`}>
@@ -80,12 +77,15 @@ export const ChartStage: React.FC<ChartStageProps> = ({
   if (state.activeCategory === 'macular_color') {
     return (
       <div className={`w-full h-full ${mirrorClass}`}>
-        <MacularColorDisplay state={state} scaleFactor={scaleFactor} />
+        <MacularColorDisplay
+          state={state}
+          scaleFactor={scaleFactor}
+          onUpdateState={onUpdateState}
+        />
       </div>
     );
   }
 
-  // 3. Standard Visual Acuity Chart OR Automated (e)ETDRS Wizard
   const isEtdrs = state.activeCategory === 'etdrs_wizard';
   const targetLogMAR = isEtdrs ? state.etdrsWizard.currentLogMAR : state.activeLogMAR;
   const optotypeSet = isEtdrs ? 'sloan' : state.optotypeSet;
@@ -98,7 +98,6 @@ export const ChartStage: React.FC<ChartStageProps> = ({
   const fgColor = state.invertPolarity ? '#FFFFFF' : '#000000';
   const baseBgColor = state.invertPolarity ? '#000000' : '#FFFFFF';
 
-  // Duochrome background layers
   const renderDuochromeBackground = () => {
     if (state.duochromeOverlay === 'none' || isEtdrs) return null;
     if (state.duochromeOverlay === 'red_only') {
@@ -121,11 +120,10 @@ export const ChartStage: React.FC<ChartStageProps> = ({
   const effectiveFgColor =
     state.duochromeOverlay !== 'none' && !isEtdrs ? '#000000' : fgColor;
 
-  // Crowding / Contour Interaction Frame Renderer
   const renderWithCrowding = (content: React.ReactNode, optoSizePx: number) => {
     if (state.crowdingMode === 'none') return content;
 
-    const strokeThickness = Math.max(2, optoSizePx * 0.2); // 1 arcminute stroke = 1/5th optotype height
+    const strokeThickness = Math.max(2, optoSizePx * 0.2);
     const gap =
       state.crowdingMode === 'bars_0.5x' ? optoSizePx * 0.5 : optoSizePx * 1.0;
 
@@ -143,28 +141,23 @@ export const ChartStage: React.FC<ChartStageProps> = ({
       );
     }
 
-    // 4 Flanking Contour Interaction Bars (Top, Bottom, Left, Right)
     return (
       <div
         className="relative inline-flex items-center justify-center"
         style={{ padding: `${gap + strokeThickness}px` }}
       >
-        {/* Top Bar */}
         <div
           className="absolute left-4 right-4 top-0"
           style={{ height: `${strokeThickness}px`, backgroundColor: effectiveFgColor }}
         />
-        {/* Bottom Bar */}
         <div
           className="absolute left-4 right-4 bottom-0"
           style={{ height: `${strokeThickness}px`, backgroundColor: effectiveFgColor }}
         />
-        {/* Left Bar */}
         <div
           className="absolute top-4 bottom-4 left-0"
           style={{ width: `${strokeThickness}px`, backgroundColor: effectiveFgColor }}
         />
-        {/* Right Bar */}
         <div
           className="absolute top-4 bottom-4 right-0"
           style={{ width: `${strokeThickness}px`, backgroundColor: effectiveFgColor }}
@@ -174,7 +167,6 @@ export const ChartStage: React.FC<ChartStageProps> = ({
     );
   };
 
-  // Determine which lines to show
   const renderChartContent = () => {
     const activePx = Math.max(
       4,
@@ -187,7 +179,6 @@ export const ChartStage: React.FC<ChartStageProps> = ({
       isolationMode === 'column' || isEtdrs
     );
 
-    // SINGLE OPTOTYPE ISOLATION
     if (isolationMode === 'single' || optotypeSet === 'dyop') {
       const idx = Math.min(symbols.length - 1, Math.max(0, state.activeLetterIndex));
       const sym = symbols[idx] || symbols[0];
@@ -203,9 +194,7 @@ export const ChartStage: React.FC<ChartStageProps> = ({
       );
     }
 
-    // VERTICAL COLUMN ISOLATION
     if (isolationMode === 'column') {
-      // Render 4 consecutive acuity steps vertically in a single column
       const activeIdx = ACUITY_LADDER.findIndex(
         (l) => Math.abs(l.logMAR - targetLogMAR) < 0.01
       );
@@ -235,12 +224,11 @@ export const ChartStage: React.FC<ChartStageProps> = ({
       return renderWithCrowding(colContent, activePx);
     }
 
-    // SINGLE HORIZONTAL LINE ISOLATION
     if (isolationMode === 'line') {
       const rowContent = (
         <div
           className="flex items-center justify-center"
-          style={{ gap: `${activePx}px` }} // Standard ETDRS inter-letter spacing = 1.0x optotype width
+          style={{ gap: `${activePx}px` }}
         >
           {symbols.map((sym, idx) => (
             <OptotypeSvg
@@ -255,7 +243,6 @@ export const ChartStage: React.FC<ChartStageProps> = ({
       return renderWithCrowding(rowContent, activePx);
     }
 
-    // FULL MULTI-LINE CHART (Progressive LogMAR Window)
     const activeIdx = ACUITY_LADDER.findIndex(
       (l) => Math.abs(l.logMAR - targetLogMAR) < 0.01
     );
@@ -275,7 +262,6 @@ export const ChartStage: React.FC<ChartStageProps> = ({
 
           return (
             <div key={lineSpec.logMAR} className="relative flex items-center justify-center">
-              {/* Subtle indicator bar for the active line */}
               {isCurrent && (
                 <div
                   className="absolute -left-8 w-3 h-1.5 rounded-full"
@@ -309,12 +295,10 @@ export const ChartStage: React.FC<ChartStageProps> = ({
     >
       {renderDuochromeBackground()}
 
-      {/* Main Optotype Canvas (Mirrored if Patient Screen + Folded Room) */}
-      <div className={`relative z-10 flex items-center justify-center ${mirrorClass}`}>
+      <div className={`relative z-10 flex items-center justify-center w-full h-full ${mirrorClass}`}>
         {renderChartContent()}
       </div>
 
-      {/* Optional Acuity Notation Badge on Patient Screen (Only if clinician enables showNotationOnPatient) */}
       {isPatientScreen && state.showNotationOnPatient && (
         <div
           className="absolute bottom-5 right-6 z-20 px-3.5 py-1.5 rounded-lg text-sm font-mono font-bold tracking-wider opacity-60"

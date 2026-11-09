@@ -1,5 +1,5 @@
 /**
- * OptiSuite 2020 — Shared Types & Ephemeral Exam State
+ * SIMA Optometry App — Shared Types & Ephemeral Exam State
  * Zero-PHI Ephemeral Clinical Instrument State synchronized in real-time via WebSockets.
  */
 
@@ -34,7 +34,13 @@ export type AstigmatismMode = 'clock_dial' | 'sunburst' | 'jcc_dots';
 
 export type BinocularMode = 'worth_4_dot' | 'schober' | 'fixation_disparity' | 'binocular_balance';
 
-export type MacularColorMode = 'amsler_standard' | 'amsler_inverted' | 'amsler_red' | 'amsler_diagonal' | 'color_ishihara' | 'color_d15';
+export type MacularColorMode =
+  | 'amsler_standard'
+  | 'amsler_inverted'
+  | 'amsler_red'
+  | 'amsler_diagonal'
+  | 'color_ishihara'
+  | 'color_d15';
 
 export type ContrastMode = 'letter_contrast' | 'sine_grating';
 
@@ -124,6 +130,10 @@ export interface ExamState {
   macularColorMode: MacularColorMode;
   /** Color vision plate index (0-7) */
   colorPlateIndex: number;
+  /** Farnsworth D-15 arranged cap indices (starts with [0] as fixed Pilot/Ref cap) */
+  d15ArrangedCaps: number[];
+  /** Farnsworth D-15 unplaced shuffled cap indices (1..15) */
+  d15RemainingCaps: number[];
   /** Dyop rotation direction ('cw' | 'ccw') and RPM */
   dyopDirection: 'cw' | 'ccw';
   dyopRpm: number;

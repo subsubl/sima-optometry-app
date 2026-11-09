@@ -6,6 +6,7 @@ import {
   CrowdingMode,
   DuochromeOverlay,
   ExamState,
+  LetterScoreStatus,
 } from '../types/exam';
 
 interface HotkeyHandlers {
@@ -95,7 +96,6 @@ export function useClinicalHotkeys({ state, updateState, randomizeOptotypes }: H
           break;
         }
 
-        // Left / Right Arrow keys cycle through the clinical test screens (VA Chart <-> Duochrome <-> Astigmatism <-> Binocular <-> eETDRS <-> Contrast <-> Macular/Color)
         case 'ArrowLeft': {
           e.preventDefault();
           updateState((prev) => {
@@ -124,7 +124,6 @@ export function useClinicalHotkeys({ state, updateState, randomizeOptotypes }: H
           break;
         }
 
-        // [ and ] or , and . step isolated target index or astigmatism axis
         case '[':
         case ',': {
           e.preventDefault();
@@ -250,6 +249,59 @@ export function useClinicalHotkeys({ state, updateState, randomizeOptotypes }: H
           e.preventDefault();
           const letterIdx = Number(e.key) - 1;
           updateState((prev) => {
+            if (prev.activeCategory === 'etdrs_wizard') {
+              const curLog = prev.etdrsWizard.currentLogMAR;
+              const key = curLog.toFixed(1);
+              const existing = prev.etdrsWizard.lineScores[key] || [
+                'untested',
+                'untested',
+                'untested',
+                'untested',
+                'untested',
+              ];
+              const nextRow: LetterScoreStatus[] = [...existing];
+              const cur = nextRow[letterIdx];
+              nextRow[letterIdx] =
+                cur === 'untested' ? 'correct' : cur === 'correct' ? 'incorrect' : 'untested';
+
+              const nextLineScores = { ...prev.etdrsWizard.lineScores, [key]: nextRow };
+              const currentLineCorrect = nextRow.filter((s) => s === 'correct').length;
+              const currentLineTested = nextRow.filter((s) => s !== 'untested').length;
+              const missedOnCurrent = 5 - currentLineCorrect;
+              const estimatedLogMAR = Number((curLog + missedOnCurrent * 0.02).toFixed(2));
+              const estimatedLetterScore = Math.max(
+                0,
+                Math.min(100, Math.round(85 - 50 * estimatedLogMAR))
+              );
+
+              let nextLogMAR = curLog;
+              let nextPhase = prev.etdrsWizard.phase;
+              let nextSeed = prev.randomSeed;
+
+              if (currentLineTested === 5) {
+                if (currentLineCorrect >= 3 && curLog > -0.3) {
+                  nextLogMAR = Number((curLog - 0.1).toFixed(1));
+                  nextPhase = 'threshold';
+                  nextSeed = prev.randomSeed + 1;
+                } else {
+                  nextPhase = 'completed';
+                }
+              }
+
+              return {
+                ...prev,
+                randomSeed: nextSeed,
+                etdrsWizard: {
+                  ...prev.etdrsWizard,
+                  phase: nextPhase,
+                  currentLogMAR: nextLogMAR,
+                  lineScores: nextLineScores,
+                  finalLogMAR: estimatedLogMAR,
+                  totalLetterScore: estimatedLetterScore,
+                },
+              };
+            }
+
             const nextScores = [...prev.currentLineScores];
             const cur = nextScores[letterIdx];
             nextScores[letterIdx] =

@@ -1,5 +1,7 @@
 import { ExamState } from '../types/exam';
 
+export const DEFAULT_D15_SHUFFLED = [8, 1, 13, 4, 11, 2, 15, 6, 10, 3, 14, 7, 12, 5, 9];
+
 export const DEFAULT_EXAM_STATE: ExamState = {
   activeCategory: 'va_chart',
   optotypeSet: 'sloan',
@@ -21,11 +23,13 @@ export const DEFAULT_EXAM_STATE: ExamState = {
   worthDotSpread: 1.0,
   macularColorMode: 'amsler_standard',
   colorPlateIndex: 0,
+  d15ArrangedCaps: [0],
+  d15RemainingCaps: [...DEFAULT_D15_SHUFFLED],
   dyopDirection: 'cw',
   dyopRpm: 40,
   etdrsWizard: {
-    phase: 'screening',
-    currentLogMAR: 0.7, // Start screening at 20/100
+    phase: 'threshold',
+    currentLogMAR: 0.4, // Start threshold staircase at 20/50 (0.4 LogMAR)
     lineScores: {},
     finalLogMAR: null,
     totalLetterScore: null,
@@ -62,7 +66,7 @@ export const WORKFLOW_PRESETS: WorkflowPreset[] = [
   {
     id: 'habitual_va',
     name: 'Habitual VA (20/40 Line)',
-    badge: '1. Entry VA',
+    badge: '1. ENTRY 20/40',
     description: 'Sloan single line at 20/40 (0.3 LogMAR) for rapid entry screening',
     patch: {
       activeCategory: 'va_chart',
@@ -77,7 +81,7 @@ export const WORKFLOW_PRESETS: WorkflowPreset[] = [
   {
     id: 'refraction_20_20',
     name: 'Threshold 20/20 Line',
-    badge: '2. 20/20 Check',
+    badge: '2. 20/20 CHECK',
     description: 'Sloan single line at 20/20 (0.0 LogMAR) for endpoint refraction',
     patch: {
       activeCategory: 'va_chart',
@@ -91,7 +95,7 @@ export const WORKFLOW_PRESETS: WorkflowPreset[] = [
   {
     id: 'astig_refinement',
     name: 'Astigmatic Clock & JCC',
-    badge: '3. Cylinder',
+    badge: '3. CYLINDER',
     description: 'Astigmatic clock dial for cylinder axis & power refinement',
     patch: {
       activeCategory: 'astigmatism',
@@ -101,7 +105,7 @@ export const WORKFLOW_PRESETS: WorkflowPreset[] = [
   {
     id: 'duochrome_check',
     name: 'Duochrome Red/Green Split',
-    badge: '4. Sphere Bal',
+    badge: '4. SPHERE BAL',
     description: 'Split Red/Green verification at 20/25 (0.1 LogMAR)',
     patch: {
       activeCategory: 'va_chart',
@@ -114,7 +118,7 @@ export const WORKFLOW_PRESETS: WorkflowPreset[] = [
   {
     id: 'binocular_worth',
     name: 'Worth 4-Dot Fusion',
-    badge: '5. Binocular',
+    badge: '5. BINOCULAR',
     description: 'Flat fusion & suppression screening',
     patch: {
       activeCategory: 'binocular',
@@ -124,7 +128,7 @@ export const WORKFLOW_PRESETS: WorkflowPreset[] = [
   {
     id: 'pediatric_crowded',
     name: 'Pediatric Crowded Single',
-    badge: '6. Pediatric',
+    badge: '6. PEDIATRIC',
     description: 'Isolated pediatric symbol with 0.5x contour crowding bars for amblyopia',
     patch: {
       activeCategory: 'va_chart',

@@ -2,6 +2,8 @@
   "name": "sima-optometry-app",
   "version": "1.0.0",
   "description": "SIMA Optometry App — Clinical Digital Visual Acuity & Optometric Examination Console",
+  "author": "SIMA Optometry",
+  "license": "MIT",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -11,7 +13,37 @@
     "start": "npm run build && node server/index.mjs",
     "electron:dev": "ELECTRON_DEV=1 node server/dev.mjs",
     "electron:start": "npm run build && electron .",
+    "dist:linux": "npm run build && npx electron-builder --linux AppImage deb",
+    "dist:win": "npm run build && npx electron-builder --win nsis",
+    "dist:mac": "npm run build && npx electron-builder --mac dmg",
     "test": "vitest run"
+  },
+  "build": {
+    "appId": "com.sima.optometry",
+    "productName": "SIMA Optometry App",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "server/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "category": "MedicalSoftware",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "category": "public.app-category.medical",
+      "target": "dmg"
+    }
   },
   "dependencies": {
     "express": "^4.21.2",

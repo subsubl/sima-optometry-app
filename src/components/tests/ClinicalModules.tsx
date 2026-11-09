@@ -5,7 +5,74 @@ import { OptotypeSvg } from '../optotypes/OptotypeSvg';
 
 interface ModuleProps {
   state: ExamState;
-  scaleFactor?: number; // 1.0 on Patient Screen, scaled down on Doctor Mirror Preview
+  scaleFactor?: number;
+  onUpdateState?: (updater: Partial<ExamState> | ((prev: ExamState) => ExamState)) => void;
+}
+
+export const D15_HUE_CAPS = [
+  '#3B82A6', // 0: Pilot / Reference Cap
+  '#3E8D9E', // 1
+  '#43968E', // 2
+  '#4C9E7A', // 3
+  '#5CA366', // 4
+  '#74A655', // 5
+  '#8FA648', // 6
+  '#ABA240', // 7
+  '#C29840', // 8
+  '#D48947', // 9
+  '#DF7856', // 10
+  '#E1696B', // 11
+  '#DA6183', // 12
+  '#C9619B', // 13
+  '#B069AE', // 14
+  '#9073B8', // 15
+];
+
+/**
+ * Evaluates Farnsworth D-15 cap sequence for major color confusion crossings.
+ */
+export function analyzeD15Arrangement(arranged: number[]): {
+  crossings: number;
+  status: string;
+} {
+  if (arranged.length < 4) {
+    return { crossings: 0, status: `PLACED ${arranged.length}/16 CAPS` };
+  }
+  let crossings = 0;
+  let rgCrossings = 0;
+  let byCrossings = 0;
+
+  for (let i = 1; i < arranged.length; i++) {
+    const a = arranged[i - 1];
+    const b = arranged[i];
+    const diff = Math.abs(a - b);
+    if (diff >= 4) {
+      crossings++;
+      // Protan/Deutan crossings typically bridge caps 1..6 <-> 15..9
+      if ((a <= 6 && b >= 9) || (b <= 6 && a >= 9)) {
+        rgCrossings++;
+      } else {
+        byCrossings++;
+      }
+    }
+  }
+
+  if (crossings === 0) {
+    return {
+      crossings: 0,
+      status: arranged.length === 16 ? 'NORMAL TRICHROMATIC ORDER (0 CROSSINGS)' : '0 CROSSINGS SO FAR',
+    };
+  }
+  if (rgCrossings >= byCrossings) {
+    return {
+      crossings,
+      status: `RED-GREEN AXIS (PROTAN/DEUTAN) • ${crossings} CROSSING(S)`,
+    };
+  }
+  return {
+    crossings,
+    status: `BLUE-YELLOW AXIS (TRITAN) • ${crossings} CROSSING(S)`,
+  };
 }
 
 /**
@@ -27,7 +94,6 @@ export const DuochromeBalanceDisplay: React.FC<ModuleProps> = ({ state, scaleFac
         className="w-1/2 h-full flex flex-col items-end justify-center pr-[4%] gap-6"
         style={{ backgroundColor: '#DC2626', color: '#000000' }}
       >
-        {/* Concentric Bichrome Verification Target (Left Half) */}
         <svg width={basePx * 2.2} height={basePx * 2.2} viewBox="0 0 100 100" className="mb-2">
           <circle cx="50" cy="50" r="42" fill="none" stroke="black" strokeWidth="7" />
           <circle cx="50" cy="50" r="24" fill="none" stroke="black" strokeWidth="7" />
@@ -79,14 +145,9 @@ export const AstigmatismDisplay: React.FC<ModuleProps> = ({ state, scaleFactor =
   const accentColor = '#EF4444';
 
   if (state.astigmatismMode === 'jcc_dots') {
-    // 19-dot Hexagonal Honeycomb Cluster for Jackson Cross-Cylinder Verification
-    const dotSpacing = Math.max(12 * scaleFactor, oneDegPx * 0.45);
-    const dotRadius = dotSpacing * 0.28;
     const hexCoords: Array<[number, number]> = [
       [0, 0],
-      // Ring 1 (6 dots)
       [1, 0], [0.5, 0.866], [-0.5, 0.866], [-1, 0], [-0.5, -0.866], [0.5, -0.866],
-      // Ring 2 (12 dots)
       [2, 0], [1.5, 0.866], [1, 1.732], [0, 1.732], [-1, 1.732], [-1.5, 0.866],
       [-2, 0], [-1.5, -0.866], [-1, -1.732], [0, -1.732], [1, -1.732], [1.5, -0.866],
     ];
@@ -110,7 +171,6 @@ export const AstigmatismDisplay: React.FC<ModuleProps> = ({ state, scaleFactor =
   }
 
   if (state.astigmatismMode === 'sunburst') {
-    // 180-degree Fan & Block Chart (every 10 degrees) with rotatable axis arrow
     const angles = Array.from({ length: 19 }, (_, i) => i * 10);
     return (
       <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: bgColor }}>
@@ -147,7 +207,6 @@ export const AstigmatismDisplay: React.FC<ModuleProps> = ({ state, scaleFactor =
               </g>
             );
           })}
-          {/* Rotatable Axis V-Pointer */}
           <g transform={`rotate(${90 - state.astigmatismAxisDeg} 0 0)`}>
             <polygon points="0,-38 -10,-18 10,-18" fill={accentColor} />
             <rect x="-5" y="10" width="10" height="32" fill={fgColor} />
@@ -158,15 +217,13 @@ export const AstigmatismDisplay: React.FC<ModuleProps> = ({ state, scaleFactor =
     );
   }
 
-  // Default: 12-Hour Astigmatic Clock Dial (3 parallel lines every 30 degrees)
   const clockHours = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
   return (
     <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: bgColor }}>
       <svg width={radius * 2.5} height={radius * 2.5} viewBox="-200 -200 400 400">
-        {/* 6 Spokes (each spoke has 3 parallel lines) */}
         {[0, 30, 60, 90, 120, 150].map((deg) => {
           const isHighlighted =
-            Math.abs((180 - state.astigmatismAxisDeg) % 180 - deg) < 15;
+            Math.abs(((180 - state.astigmatismAxisDeg) % 180) - deg) < 15;
           const strokeCol = isHighlighted ? accentColor : fgColor;
           return (
             <g key={deg} transform={`rotate(${deg})`}>
@@ -180,11 +237,9 @@ export const AstigmatismDisplay: React.FC<ModuleProps> = ({ state, scaleFactor =
           );
         })}
 
-        {/* Central Circle */}
         <circle cx="0" cy="0" r="34" fill="none" stroke={fgColor} strokeWidth="2.5" />
         <circle cx="0" cy="0" r="4" fill={accentColor} />
 
-        {/* Clock Numerals 1 - 12 */}
         {clockHours.map((hr, idx) => {
           const angleRad = ((idx * 30 - 90) * Math.PI) / 180;
           const x = Math.cos(angleRad) * 166;
@@ -221,7 +276,6 @@ export const BinocularDisplay: React.FC<ModuleProps> = ({ state, scaleFactor = 1
     return (
       <div className="w-full h-full flex items-center justify-center bg-black select-none">
         <div className="relative" style={{ width: `${spread * 2.5}px`, height: `${spread * 2.5}px` }}>
-          {/* Top: Red Diamond */}
           <div
             className="absolute left-1/2 -translate-x-1/2 rotate-45"
             style={{
@@ -232,7 +286,6 @@ export const BinocularDisplay: React.FC<ModuleProps> = ({ state, scaleFactor = 1
               boxShadow: '0 0 12px rgba(239,68,68,0.4)',
             }}
           />
-          {/* Left: Green Circle */}
           <div
             className="absolute top-1/2 -translate-y-1/2 rounded-full"
             style={{
@@ -243,7 +296,6 @@ export const BinocularDisplay: React.FC<ModuleProps> = ({ state, scaleFactor = 1
               boxShadow: '0 0 12px rgba(34,197,94,0.4)',
             }}
           />
-          {/* Right: Green Circle */}
           <div
             className="absolute top-1/2 -translate-y-1/2 rounded-full"
             style={{
@@ -254,7 +306,6 @@ export const BinocularDisplay: React.FC<ModuleProps> = ({ state, scaleFactor = 1
               boxShadow: '0 0 12px rgba(34,197,94,0.4)',
             }}
           />
-          {/* Bottom: White Circle */}
           <div
             className="absolute left-1/2 -translate-x-1/2 rounded-full"
             style={{
@@ -275,10 +326,8 @@ export const BinocularDisplay: React.FC<ModuleProps> = ({ state, scaleFactor = 1
     return (
       <div className="w-full h-full flex items-center justify-center bg-black select-none">
         <svg width={size} height={size} viewBox="-120 -120 240 240">
-          {/* Outer and Inner Green Rings */}
           <circle cx="0" cy="0" r="95" fill="none" stroke="#22C55E" strokeWidth="8" />
           <circle cx="0" cy="0" r="62" fill="none" stroke="#22C55E" strokeWidth="6" />
-          {/* Central Red Cross */}
           <line x1="-38" y1="0" x2="38" y2="0" stroke="#EF4444" strokeWidth="8" />
           <line x1="0" y1="-38" x2="0" y2="38" stroke="#EF4444" strokeWidth="8" />
         </svg>
@@ -287,12 +336,10 @@ export const BinocularDisplay: React.FC<ModuleProps> = ({ state, scaleFactor = 1
   }
 
   if (state.binocularMode === 'fixation_disparity') {
-    // Mallett / OXO Fixation Disparity Box with Nonius Vernier Bars
     const size = oneDegPx * 4.5;
     return (
       <div className="w-full h-full flex items-center justify-center bg-black select-none">
         <svg width={size} height={size} viewBox="-140 -140 280 280">
-          {/* Central Fusion Lock Box */}
           <rect x="-85" y="-36" width="170" height="72" rx="8" fill="#111827" stroke="#FFFFFF" strokeWidth="4" />
           <text
             x="0"
@@ -306,27 +353,21 @@ export const BinocularDisplay: React.FC<ModuleProps> = ({ state, scaleFactor = 1
           >
             OXO
           </text>
-          {/* Upper Vertical Nonius (Red - OD) */}
           <rect x="-4" y="-115" width="8" height="62" fill="#EF4444" />
-          {/* Lower Vertical Nonius (Green - OS) */}
           <rect x="-4" y="53" width="8" height="62" fill="#22C55E" />
-          {/* Left Horizontal Nonius (Red) */}
           <rect x="-135" y="-4" width="38" height="8" fill="#EF4444" />
-          {/* Right Horizontal Nonius (Green) */}
           <rect x="97" y="-4" width="38" height="8" fill="#22C55E" />
         </svg>
       </div>
     );
   }
 
-  // Binocular Acuity Balance (Upper vs Lower dissociated lines)
   const optoPx = Math.max(16, calculateOptotypeHeightPx(state.calibration, state.activeLogMAR) * scaleFactor);
   const topLetters = ['H', 'K', 'O', 'N', 'S'];
   const bottomLetters = ['D', 'Z', 'V', 'C', 'R'];
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center gap-12 bg-black text-white select-none">
-      {/* Upper Row (OD / Red-filtered or Top Prism) */}
       <div className="flex flex-col items-center gap-2 px-8 py-5 rounded-xl border border-red-500/40 bg-red-950/20">
         <div className="flex items-center" style={{ gap: `${optoPx}px` }}>
           {topLetters.map((sym, i) => (
@@ -335,10 +376,8 @@ export const BinocularDisplay: React.FC<ModuleProps> = ({ state, scaleFactor = 1
         </div>
       </div>
 
-      {/* Central Binocular Fusion Line */}
       <div className="w-64 h-1.5 bg-white rounded-full" />
 
-      {/* Lower Row (OS / Green-filtered or Bottom Prism) */}
       <div className="flex flex-col items-center gap-2 px-8 py-5 rounded-xl border border-green-500/40 bg-green-950/20">
         <div className="flex items-center" style={{ gap: `${optoPx}px` }}>
           {bottomLetters.map((sym, i) => (
@@ -383,13 +422,11 @@ export const ContrastSensitivityDisplay: React.FC<ModuleProps> = ({ state, scale
         const idx = (y * size + x) * 4;
 
         if (dist > radius) {
-          // Neutral gray surround (128 luminance)
           data[idx] = 128;
           data[idx + 1] = 128;
           data[idx + 2] = 128;
           data[idx + 3] = 255;
         } else {
-          // Raised-cosine edge window (Gabor-like soft edge)
           const edgeRatio = dist / radius;
           const envelope = edgeRatio > 0.85 ? 0.5 * (1 + Math.cos(((edgeRatio - 0.85) / 0.15) * Math.PI)) : 1.0;
           const proj = dx * cosA + dy * sinA;
@@ -422,7 +459,6 @@ export const ContrastSensitivityDisplay: React.FC<ModuleProps> = ({ state, scale
     );
   }
 
-  // Letter Contrast Mode (Weber contrast on white background)
   const optoPx = Math.max(14, calculateOptotypeHeightPx(state.calibration, letterLogMAR) * scaleFactor);
   const letters = ['C', 'D', 'H', 'K', 'N'];
   const grayVal = Math.round(255 * (1 - Math.max(0.005, Math.min(1, contrastPercent / 100))));
@@ -440,7 +476,7 @@ export const ContrastSensitivityDisplay: React.FC<ModuleProps> = ({ state, scale
 };
 
 /**
- * 5. Macular Amsler Grid & Color Vision Screening Plates
+ * 5. Macular Amsler Grid & Color Vision Screening Plates (Including Interactive Farnsworth D-15)
  */
 export const ISHIHARA_PLATES = [
   { number: '12', type: 'Control Plate (All patients read 12)', fgColors: ['#E86F38', '#F2854B'], bgColors: ['#7A9A55', '#8FB065', '#648544'] },
@@ -453,7 +489,11 @@ export const ISHIHARA_PLATES = [
   { number: '16', type: 'Protan / Deutan Differentiation (Normal: 16)', fgColors: ['#D85858', '#E67373'], bgColors: ['#788A72', '#8E9F88', '#63735E'] },
 ];
 
-export const MacularColorDisplay: React.FC<ModuleProps> = ({ state, scaleFactor = 1 }) => {
+export const MacularColorDisplay: React.FC<ModuleProps> = ({
+  state,
+  scaleFactor = 1,
+  onUpdateState,
+}) => {
   const mode = state.macularColorMode;
   const oneDegPx = Math.max(18, calculateOneDegreePx(state.calibration) * scaleFactor);
 
@@ -461,7 +501,6 @@ export const MacularColorDisplay: React.FC<ModuleProps> = ({ state, scaleFactor 
     const plate = ISHIHARA_PLATES[state.colorPlateIndex % ISHIHARA_PLATES.length];
     const size = Math.min(360 * scaleFactor, oneDegPx * 6);
 
-    // Generate deterministic packed pseudoisochromatic dots
     const dots: Array<{ cx: number; cy: number; r: number; isFg: boolean; colorIdx: number }> = [];
     for (let ring = 0; ring <= 12; ring++) {
       const count = ring === 0 ? 1 : Math.round(ring * 6.2);
@@ -495,7 +534,6 @@ export const MacularColorDisplay: React.FC<ModuleProps> = ({ state, scaleFactor 
             </mask>
           </defs>
           <circle cx="100" cy="100" r="96" fill="#171717" />
-          {/* Background Dots */}
           <g>
             {dots.map((d, idx) => (
               <circle
@@ -507,7 +545,6 @@ export const MacularColorDisplay: React.FC<ModuleProps> = ({ state, scaleFactor 
               />
             ))}
           </g>
-          {/* Foreground Numeral Dots (masked by numeral geometry) */}
           <g mask="url(#ishihara-num-mask)">
             {dots.map((d, idx) => (
               <circle
@@ -525,28 +562,92 @@ export const MacularColorDisplay: React.FC<ModuleProps> = ({ state, scaleFactor 
   }
 
   if (mode === 'color_d15') {
-    const d15Caps = [
-      '#3B82A6', '#3E8D9E', '#43968E', '#4C9E7A', '#5CA366',
-      '#74A655', '#8FA648', '#ABA240', '#C29840', '#D48947',
-      '#DF7856', '#E1696B', '#DA6183', '#C9619B', '#B069AE', '#9073B8',
-    ];
+    const capSize = Math.max(20, Math.round(44 * scaleFactor));
+    const arranged = state.d15ArrangedCaps?.length ? state.d15ArrangedCaps : [0];
+    const remaining = state.d15RemainingCaps || [];
+
+    const handlePlaceCap = (capIdx: number) => {
+      if (!onUpdateState) return;
+      onUpdateState((prev) => ({
+        ...prev,
+        d15ArrangedCaps: [...(prev.d15ArrangedCaps || [0]), capIdx],
+        d15RemainingCaps: (prev.d15RemainingCaps || []).filter((c) => c !== capIdx),
+      }));
+    };
+
+    const handleRemoveCap = (capIdx: number) => {
+      if (!onUpdateState || capIdx === 0) return;
+      onUpdateState((prev) => ({
+        ...prev,
+        d15ArrangedCaps: (prev.d15ArrangedCaps || [0]).filter((c) => c !== capIdx),
+        d15RemainingCaps: [...(prev.d15RemainingCaps || []), capIdx],
+      }));
+    };
+
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center bg-neutral-900 gap-6 p-6 select-none">
-        <div className="flex flex-wrap items-center justify-center gap-3 max-w-4xl">
-          {d15Caps.map((hex, idx) => (
-            <div key={idx} className="flex flex-col items-center gap-1.5">
-              <div
-                className="rounded-full border-4 border-neutral-800 shadow-md"
-                style={{
-                  width: `${Math.max(22, 48 * scaleFactor)}px`,
-                  height: `${Math.max(22, 48 * scaleFactor)}px`,
-                  backgroundColor: hex,
-                }}
-              />
-              <span className="text-xs font-mono text-neutral-400">{idx === 0 ? 'Ref' : idx}</span>
-            </div>
-          ))}
+      <div className="w-full h-full flex flex-col items-center justify-center bg-[#121316] gap-6 p-4 select-none font-mono">
+        {/* Placed Sequence Tray */}
+        <div className="w-full max-w-5xl bg-[#1A1C22] border border-[#2C313D] p-3 flex flex-col gap-2">
+          <div className="text-[10px] uppercase tracking-widest text-neutral-400">
+            ARRANGED SEQUENCE (START FROM REF CAP)
+          </div>
+          <div className="flex flex-wrap items-center gap-2 min-h-[52px]">
+            {arranged.map((capIdx) => (
+              <button
+                key={`placed-${capIdx}`}
+                type="button"
+                onClick={() => handleRemoveCap(capIdx)}
+                disabled={!onUpdateState || capIdx === 0}
+                className={`flex flex-col items-center gap-1 ${
+                  onUpdateState && capIdx !== 0 ? 'cursor-pointer hover:scale-105 transition' : ''
+                }`}
+              >
+                <div
+                  className={`rounded-full border-2 shadow-md ${
+                    capIdx === 0 ? 'border-amber-400' : 'border-neutral-800'
+                  }`}
+                  style={{
+                    width: `${capSize}px`,
+                    height: `${capSize}px`,
+                    backgroundColor: D15_HUE_CAPS[capIdx],
+                  }}
+                />
+                {capIdx === 0 && (
+                  <span className="text-[9px] text-amber-400 font-bold">REF</span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {/* Unplaced Shuffled Caps Pool */}
+        {remaining.length > 0 && (
+          <div className="w-full max-w-5xl bg-[#0D0E12] border border-[#222630] p-3 flex flex-col gap-2">
+            <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+              SELECT NEXT CLOSEST HUE ({remaining.length} REMAINING)
+            </div>
+            <div className="flex flex-wrap items-center gap-2.5">
+              {remaining.map((capIdx) => (
+                <button
+                  key={`rem-${capIdx}`}
+                  type="button"
+                  onClick={() => handlePlaceCap(capIdx)}
+                  disabled={!onUpdateState}
+                  className={onUpdateState ? 'cursor-pointer hover:scale-110 transition' : ''}
+                >
+                  <div
+                    className="rounded-full border-2 border-neutral-800 shadow-md"
+                    style={{
+                      width: `${capSize}px`,
+                      height: `${capSize}px`,
+                      backgroundColor: D15_HUE_CAPS[capIdx],
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }

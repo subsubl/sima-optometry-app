@@ -8,19 +8,17 @@ import {
   getEffectiveDistanceMeters,
   getPixelsPerMm,
 } from './acuityMath';
+import { analyzeD15Arrangement } from '../components/tests/ClinicalModules';
 import { DEFAULT_EXAM_STATE } from './examDefaults';
 
-describe('OptiSuite 2020 — Trigonometric Calibration & Optometric Math Engine', () => {
+describe('SIMA Optometry App — Trigonometric Calibration & Optometric Math Engine', () => {
   it('calculates exact 5-arcminute physical height at 6.0m and 4.0m (ISO 8596)', () => {
-    // At 6.0m (6000mm), 20/20 (0.0 LogMAR) subtends 5 arcminutes -> ~8.7266mm
     const h6m2020 = calculateOptotypeHeightMm(6.0, 0.0);
     expect(h6m2020).toBeCloseTo(8.7266, 3);
 
-    // At 6.0m, 20/200 (1.0 LogMAR) subtends 50 arcminutes -> ~87.268mm
     const h6m20200 = calculateOptotypeHeightMm(6.0, 1.0);
     expect(h6m20200).toBeCloseTo(87.268, 2);
 
-    // At 4.0m (ETDRS standard distance), 20/20 (0.0 LogMAR) -> ~5.8178mm
     const h4m2020 = calculateOptotypeHeightMm(4.0, 0.0);
     expect(h4m2020).toBeCloseTo(5.8178, 3);
   });
@@ -42,7 +40,7 @@ describe('OptiSuite 2020 — Trigonometric Calibration & Optometric Math Engine'
     const cal = {
       ...DEFAULT_EXAM_STATE.calibration,
       referenceBarPixels: 342.4,
-      measuredBarMm: 85.6, // 4.0 px/mm
+      measuredBarMm: 85.6,
       isMirroredRoom: false,
       directDistanceMeters: 6.0,
     };
@@ -89,5 +87,18 @@ describe('OptiSuite 2020 — Trigonometric Calibration & Optometric Math Engine'
     );
     expect(resFull.interpolatedLogMAR).toBeCloseTo(0.0, 2);
     expect(resFull.label).toBe('20/20 (Full)');
+  });
+
+  it('analyzes Farnsworth D-15 cap sequences for normal order and red-green crossings', () => {
+    const normalOrder = Array.from({ length: 16 }, (_, i) => i);
+    const resNormal = analyzeD15Arrangement(normalOrder);
+    expect(resNormal.crossings).toBe(0);
+    expect(resNormal.status).toContain('NORMAL TRICHROMATIC ORDER');
+
+    // Simulate Deutan/Protan red-green confusion crossing (1 -> 15 -> 2 -> 14)
+    const rgCrossOrder = [0, 1, 15, 2, 14, 3, 13, 4, 12, 5, 11, 6, 10, 7, 9, 8];
+    const resRg = analyzeD15Arrangement(rgCrossOrder);
+    expect(resRg.crossings).toBeGreaterThan(2);
+    expect(resRg.status).toContain('RED-GREEN AXIS');
   });
 });

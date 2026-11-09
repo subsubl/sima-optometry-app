@@ -18,7 +18,6 @@ export const PatientDisplayView: React.FC<PatientDisplayViewProps> = ({
 }) => {
   const [showHud, setShowHud] = useState(false);
 
-  // Full remote / keyboard control works directly on the patient screen
   useClinicalHotkeys({ state, updateState, randomizeOptotypes });
 
   useEffect(() => {
@@ -52,10 +51,13 @@ export const PatientDisplayView: React.FC<PatientDisplayViewProps> = ({
         showHud ? 'cursor-default' : 'cursor-none'
       }`}
     >
-      {/* Pure Calibrated Clinical Chart Canvas */}
-      <ChartStage state={state} isPatientScreen={true} scaleFactor={1.0} />
+      <ChartStage
+        state={state}
+        isPatientScreen={true}
+        scaleFactor={1.0}
+        onUpdateState={updateState}
+      />
 
-      {/* On-Screen Physical Ruler Reference Bar (Only shown when explicitly projected from Settings) */}
       {state.showCalibrationOnPatient && (
         <div className="absolute inset-0 z-30 bg-black/90 flex flex-col items-center justify-center p-8 text-white font-mono">
           <div className="bg-[#0D0F14] border border-[#262B38] p-6 flex flex-col items-center text-center shadow-2xl space-y-4">
@@ -76,7 +78,6 @@ export const PatientDisplayView: React.FC<PatientDisplayViewProps> = ({
         </div>
       )}
 
-      {/* Minimal Auto-Hiding Corner Escape Control (Only on mouse move) */}
       <div
         className={`absolute top-3 right-3 z-40 flex items-center gap-1 bg-[#0D0F14]/90 border border-[#262B38] p-1 font-mono text-[11px] transition-opacity duration-200 ${
           showHud ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
