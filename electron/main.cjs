@@ -1,14 +1,34 @@
 const { app, BrowserWindow, screen } = require('electron');
+const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
+
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('no-sandbox');
+}
 
 let patientWindow = null;
 let doctorWindow = null;
 
 async function startEmbeddedServer() {
-  const serverModulePath = path.join(__dirname, '../server/index.mjs');
-  const { createOptiSuiteServer } = await import(`file://${serverModulePath}`);
-  const suite = createOptiSuiteServer({ port: 3020, serveStatic: true });
-  return suite.start();
+  const unpackedBase = __dirname.replace('app.asar', 'app.asar.unpacked');
+  const candidateUnpacked = path.join(unpackedBase, '../server/index.mjs');
+  const serverModulePath = fs.existsSync(candidateUnpacked)
+    ? candidateUnpacked
+    : path.join(__dirname, '../server/index.mjs');
+
+  const { createOptiSuiteServer } = await import(pathToFileURL(serverModulePath).href);
+
+  try {
+    const suite = createOptiSuiteServer({ port: 3020, serveStatic: true });
+    return await suite.start();
+  } catch (err) {
+    if (err && err.code === 'EADDRINUSE') {
+      const fallbackSuite = createOptiSuiteServer({ port: 0, serveStatic: true });
+      return await fallbackSuite.start();
+    }
+    throw err;
+  }
 }
 
 function createClinicalWindows(port) {
@@ -24,6 +44,7 @@ function createClinicalWindows(port) {
       height: secondaryDisplay.bounds.height,
       fullscreen: true,
       autoHideMenuBar: true,
+      backgroundColor: '#08090C',
       title: 'SIMA Optometry App — Patient Display',
       webPreferences: {
         contextIsolation: true,
@@ -36,6 +57,7 @@ function createClinicalWindows(port) {
       width: 1400,
       height: 880,
       autoHideMenuBar: true,
+      backgroundColor: '#08090C',
       title: 'SIMA Optometry App — Console',
       webPreferences: {
         contextIsolation: true,
@@ -48,6 +70,7 @@ function createClinicalWindows(port) {
       width: 1440,
       height: 900,
       autoHideMenuBar: true,
+      backgroundColor: '#08090C',
       title: 'SIMA Optometry App',
       webPreferences: {
         contextIsolation: true,

@@ -25,20 +25,22 @@ export function getLocalLanIp() {
   return '127.0.0.1';
 }
 
-export function createOptiSuiteServer({ port = Number(process.env.PORT) || 3020, serveStatic = true } = {}) {
+export function createOptiSuiteServer({
+  port = process.env.PORT !== undefined ? Number(process.env.PORT) : 3020,
+  serveStatic = true,
+} = {}) {
   const app = express();
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });
 
-  // Authoritative Ephemeral Exam State (in-memory only, zero PHI retention)
   let currentExamState = null;
+  let boundPort = port;
 
   app.use(express.json());
 
-  // Network & QR Pairing Endpoint for Remote Controller
   app.get('/api/network-info', async (_req, res) => {
     const lanIp = getLocalLanIp();
-    const uiPort = process.env.VITE_PORT ? Number(process.env.VITE_PORT) : port;
+    const uiPort = process.env.VITE_PORT ? Number(process.env.VITE_PORT) : boundPort;
     const doctorUrl = `http://${lanIp}:${uiPort}/#/doctor`;
     const patientUrl = `http://${lanIp}:${uiPort}/#/patient`;
 
@@ -66,7 +68,6 @@ export function createOptiSuiteServer({ port = Number(process.env.PORT) || 3020,
     });
   });
 
-  // Serve built static frontend in production
   if (serveStatic) {
     const distPath = path.resolve(__dirname, '../dist');
     app.use(express.static(distPath));
@@ -75,7 +76,6 @@ export function createOptiSuiteServer({ port = Number(process.env.PORT) || 3020,
     });
   }
 
-  // Real-time WebSocket Synchronization Hub
   wss.on('connection', (ws) => {
     if (currentExamState) {
       ws.send(
@@ -124,16 +124,27 @@ export function createOptiSuiteServer({ port = Number(process.env.PORT) || 3020,
     server,
     wss,
     start: () =>
-      new Promise((resolve) => {
-        server.listen(port, '0.0.0.0', () => {
+      new Promise((resolve, reject) => {
+        const onError = (err) => {
+          server.removeListener('listening', onListening);
+          reject(err);
+        };
+        const onListening = () => {
+          server.removeListener('error', onError);
+          const addr = server.address();
+          boundPort = typeof addr === 'object' && addr ? addr.port : port;
           const lanIp = getLocalLanIp();
           console.log(`\n=============================================================`);
           console.log(`  SIMA Optometry App — Clinical Server Active`);
-          console.log(`  • Patient Display   : http://${lanIp}:${port}/#/patient`);
-          console.log(`  • Doctor Console    : http://${lanIp}:${port}/#/doctor`);
+          console.log(`  • Patient Display   : http://${lanIp}:${boundPort}/#/patient`);
+          console.log(`  • Doctor Console    : http://${lanIp}:${boundPort}/#/doctor`);
           console.log(`=============================================================\n`);
-          resolve({ port, lanIp });
-        });
+          resolve({ port: boundPort, lanIp });
+        };
+
+        server.once('error', onError);
+        server.once('listening', onListening);
+        server.listen(port, '0.0.0.0');
       }),
   };
 }

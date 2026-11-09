@@ -2,7 +2,9 @@
   "name": "sima-optometry-app",
   "version": "1.0.0",
   "description": "SIMA Optometry App — Clinical Digital Visual Acuity & Optometric Examination Console",
-  "author": "SIMA Optometry",
+  "author": "SIMA Optometry <info@sima-optometry.org>",
+  "homepage": "https://github.com/subsubl/sima-optometry-app",
+  "desktopName": "sima-optometry-app.desktop",
   "license": "MIT",
   "type": "module",
   "main": "electron/main.cjs",
@@ -13,14 +15,19 @@
     "start": "npm run build && node server/index.mjs",
     "electron:dev": "ELECTRON_DEV=1 node server/dev.mjs",
     "electron:start": "npm run build && electron .",
-    "dist:linux": "npm run build && npx electron-builder --linux AppImage deb",
-    "dist:win": "npm run build && npx electron-builder --win nsis",
-    "dist:mac": "npm run build && npx electron-builder --mac dmg",
+    "dist:linux": "npm run build && electron-builder --linux AppImage deb",
+    "dist:win": "npm run build && electron-builder --win nsis",
+    "dist:mac": "npm run build && electron-builder --mac dmg",
     "test": "vitest run"
   },
   "build": {
     "appId": "com.sima.optometry",
     "productName": "SIMA Optometry App",
+    "asar": true,
+    "asarUnpack": [
+      "server/**/*",
+      "dist/**/*"
+    ],
     "directories": {
       "output": "release"
     },
@@ -31,7 +38,11 @@
       "package.json"
     ],
     "linux": {
-      "category": "MedicalSoftware",
+      "icon": "build/icon.png",
+      "category": "Science",
+      "executableName": "sima-optometry-app",
+      "syncDesktopName": true,
+      "synopsis": "Clinical Digital Visual Acuity & Optometric Examination Console",
       "target": [
         "AppImage",
         "deb"
@@ -62,10 +73,18 @@
     "@types/react-dom": "^18.3.5",
     "@types/ws": "^8.5.13",
     "@vitejs/plugin-react": "^4.3.4",
-    "electron": "^33.2.1",
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
     "tailwindcss": "^4.0.0",
     "typescript": "~5.6.2",
-    "vite": "^6.0.5",
-    "vitest": "^2.1.8"
+    "vite": "^6.4.6",
+    "vitest": "^5.1.0"
+  },
+  "overrides": {
+    "@electron/asar": "^4.3.1",
+    "@electron/get": "^5.1.0",
+    "minimatch": "^11.0.5",
+    "rimraf": "^6.1.4",
+    "glob": "^14.0.4"
   }
 }
