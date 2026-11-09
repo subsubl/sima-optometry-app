@@ -809,25 +809,54 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
             </div>
           </div>
 
-          {/* Live Optical Viewport (Un-Mirrored Clinician Stage) */}
-          <div className="bg-[#0D0F14] border border-[#1E2330] p-2 flex-1 flex flex-col justify-center">
+          {/* Live Optical Viewport (Un-Mirrored Clinician Stage) - Disabled when Floating Preview is Active */}
+          {isPreviewOpen ? (
             <div
-              className="relative w-full mx-auto overflow-hidden border border-[#2A3042] bg-black"
-              style={{ aspectRatio: '16 / 10' }}
+              className="bg-[#0B0D12] border border-[#1A202C] p-4 flex flex-col items-center justify-center text-center gap-2 font-mono min-h-[140px] rounded-xs select-none"
+              data-testid="inline-preview-disabled"
             >
-              <div className="absolute top-1.5 left-1.5 w-2.5 h-2.5 border-t border-l border-neutral-500/40 z-20 pointer-events-none" />
-              <div className="absolute top-1.5 right-1.5 w-2.5 h-2.5 border-t border-r border-neutral-500/40 z-20 pointer-events-none" />
-              <div className="absolute bottom-1.5 left-1.5 w-2.5 h-2.5 border-b border-l border-neutral-500/40 z-20 pointer-events-none" />
-              <div className="absolute bottom-1.5 right-1.5 w-2.5 h-2.5 border-b border-r border-neutral-500/40 z-20 pointer-events-none" />
-
-              <ChartStage
-                state={state}
-                isPatientScreen={false}
-                scaleFactor={0.44}
-                onUpdateState={updateState}
-              />
+              <div className="flex items-center gap-2 text-amber-400 text-xs font-bold tracking-wider uppercase">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                </span>
+                <span>INLINE PATIENT VIEW DISABLED</span>
+              </div>
+              <p className="text-[11px] text-neutral-400 max-w-sm leading-relaxed">
+                Live patient view is active in the movable floating preview widget. Drag the preview anywhere or close it to restore inline view.
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsPreviewOpen(false)}
+                className="mt-1 px-3 py-1.5 bg-[#141824] hover:bg-[#1E2436] border border-[#2B3448] hover:border-amber-400/60 text-neutral-300 hover:text-white text-xs font-bold rounded-xs cursor-pointer transition flex items-center gap-1.5"
+              >
+                <span>ENABLE INLINE VIEW</span>
+                <span className="text-[10px] text-neutral-500">(Closes Floating Preview)</span>
+              </button>
             </div>
-          </div>
+          ) : (
+            <div
+              className="bg-[#0D0F14] border border-[#1E2330] p-2 flex-1 flex flex-col justify-center"
+              data-testid="inline-preview-active"
+            >
+              <div
+                className="relative w-full mx-auto overflow-hidden border border-[#2A3042] bg-black"
+                style={{ aspectRatio: '16 / 10' }}
+              >
+                <div className="absolute top-1.5 left-1.5 w-2.5 h-2.5 border-t border-l border-neutral-500/40 z-20 pointer-events-none" />
+                <div className="absolute top-1.5 right-1.5 w-2.5 h-2.5 border-t border-r border-neutral-500/40 z-20 pointer-events-none" />
+                <div className="absolute bottom-1.5 left-1.5 w-2.5 h-2.5 border-b border-l border-neutral-500/40 z-20 pointer-events-none" />
+                <div className="absolute bottom-1.5 right-1.5 w-2.5 h-2.5 border-b border-r border-neutral-500/40 z-20 pointer-events-none" />
+
+                <ChartStage
+                  state={state}
+                  isPatientScreen={false}
+                  scaleFactor={0.44}
+                  onUpdateState={updateState}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Target Answer Keystrip & Scoring (VA Chart & eETDRS only) */}
           {(state.activeCategory === 'va_chart' ||

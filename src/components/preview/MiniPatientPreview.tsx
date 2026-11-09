@@ -26,16 +26,22 @@ export const MiniPatientPreview: React.FC<MiniPatientPreviewProps> = ({
   onUpdateState,
 }) => {
   const [size, setSize] = useState<PreviewSize>('md');
-  const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
-  const dragStartRef = useRef<{ mouseX: number; mouseY: number; startX: number; startY: number }>({
-    mouseX: 0,
-    mouseY: 0,
+  const dragStartRef = useRef<{
+    pointerX: number;
+    pointerY: number;
+    startX: number;
+    startY: number;
+    pointerId: number | null;
+  }>({
+    pointerX: 0,
+    pointerY: 0,
     startX: 0,
     startY: 0,
+    pointerId: null,
   });
-  const cardRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLElement>(null);
 
   // Initialize position to bottom-right corner when mounted
   useEffect(() => {
@@ -53,11 +59,11 @@ export const MiniPatientPreview: React.FC<MiniPatientPreviewProps> = ({
       setPosition((prev) => {
         if (!prev) return null;
         const config = SIZE_CONFIGS[size];
-        const maxX = Math.max(16, window.innerWidth - config.widthPx - 16);
-        const maxY = Math.max(16, window.innerHeight - 100);
+        const maxX = Math.max(8, window.innerWidth - config.widthPx - 8);
+        const maxY = Math.max(8, window.innerHeight - 60);
         return {
-          x: Math.min(Math.max(16, prev.x), maxX),
-          y: Math.min(Math.max(16, prev.y), maxY),
+          x: Math.min(Math.max(8, prev.x), maxX),
+          y: Math.min(Math.max(8, prev.y), maxY),
         };
       });
     };
@@ -65,95 +71,93 @@ export const MiniPatientPreview: React.FC<MiniPatientPreviewProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, [size]);
 
-  // Drag handlers
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    // Only allow drag on header element (not on buttons)
-    if ((e.target as HTMLElement).closest('button')) return;
-    e.preventDefault();
-    setIsDragging(true);
+  // Pointer Drag Handlers (Unified Touchscreen, Stylus & Mouse)
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // Only allow drag on header element (not on buttons or clickable controls)
+      if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
 
-    const currentX = position?.x ?? (window.innerWidth - SIZE_CONFIGS[size].widthPx - 24);
-    const currentY = position?.y ?? (window.innerHeight - 300);
+      const target = e.currentTarget;
+      try {
+        target.setPointerCapture(e.pointerId);
+      } catch {
+        // Fallback for environments lacking pointer capture
+      }
 
-    dragStartRef.current = {
-      mouseX: e.clientX,
-      mouseY: e.clientY,
-      startX: currentX,
-      startY: currentY,
-    };
-  }, [position, size]);
+      const currentX =
+        position?.x ?? Math.max(16, window.innerWidth - SIZE_CONFIGS[size].widthPx - 24);
+      const currentY = position?.y ?? Math.max(70, window.innerHeight - 300);
 
-  useEffect(() => {
-    if (!isDragging) return;
+      dragStartRef.current = {
+        pointerX: e.clientX,
+        pointerY: e.clientY,
+        startX: currentX,
+        startY: currentY,
+        pointerId: e.pointerId,
+      };
+      setIsDragging(true);
+    },
+    [position, size]
+  );
 
-    const handleMouseMove = (e: MouseEvent) => {
-      const dx = e.clientX - dragStartRef.current.mouseX;
-      const dy = e.clientY - dragStartRef.current.mouseY;
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!isDragging) return;
+      if (
+        dragStartRef.current.pointerId !== null &&
+        e.pointerId !== dragStartRef.current.pointerId
+      ) {
+        return;
+      }
+
+      const dx = e.clientX - dragStartRef.current.pointerX;
+      const dy = e.clientY - dragStartRef.current.pointerY;
       const config = SIZE_CONFIGS[size];
-      const maxX = Math.max(16, window.innerWidth - config.widthPx - 16);
-      const maxY = Math.max(16, window.innerHeight - 60);
+      const maxX = Math.max(8, window.innerWidth - config.widthPx - 8);
+      const maxY = Math.max(8, window.innerHeight - 60);
 
       setPosition({
-        x: Math.min(Math.max(16, dragStartRef.current.startX + dx), maxX),
-        y: Math.min(Math.max(16, dragStartRef.current.startY + dy), maxY),
+        x: Math.min(Math.max(8, dragStartRef.current.startX + dx), maxX),
+        y: Math.min(Math.max(8, dragStartRef.current.startY + dy), maxY),
       });
-    };
+    },
+    [isDragging, size]
+  );
 
-    const handleMouseUp = () => {
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!isDragging) return;
+      try {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+        // Ignore release errors
+      }
+      dragStartRef.current.pointerId = null;
       setIsDragging(false);
-    };
+    },
+    [isDragging]
+  );
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+  // Safety net: in case pointerup happens outside window or capture is lost
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleGlobalPointerUp = () => {
+      setIsDragging(false);
+      dragStartRef.current.pointerId = null;
     };
-  }, [isDragging, size]);
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    window.addEventListener('pointercancel', handleGlobalPointerUp);
+    return () => {
+      window.removeEventListener('pointerup', handleGlobalPointerUp);
+      window.removeEventListener('pointercancel', handleGlobalPointerUp);
+    };
+  }, [isDragging]);
 
   if (!isOpen) return null;
 
   const currentConfig = SIZE_CONFIGS[size];
-
-  // Minimized Floating Pill Mode
-  if (isMinimized) {
-    return (
-      <div
-        style={{
-          position: 'fixed',
-          left: position ? `${position.x}px` : undefined,
-          top: position ? `${position.y}px` : undefined,
-          right: position ? undefined : '20px',
-          bottom: position ? undefined : '20px',
-        }}
-        className="z-50 flex items-center gap-2 bg-[#0B0D12]/95 border border-[#2D3548] px-3 py-1.5 shadow-2xl rounded-sm font-mono text-xs select-none backdrop-blur-md cursor-pointer hover:border-amber-400 transition"
-        onClick={() => setIsMinimized(false)}
-        title="Click to expand Patient View Preview"
-      >
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-        </span>
-        <span className="text-amber-400 font-bold uppercase tracking-wider text-[11px]">
-          PATIENT PREVIEW
-        </span>
-        <span className="text-[10px] text-neutral-400">
-          [{state.activeCategory.replace('_', ' ').toUpperCase()}]
-        </span>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose();
-          }}
-          className="ml-1 text-neutral-500 hover:text-white text-xs cursor-pointer"
-          title="Close Preview"
-        >
-          ✕
-        </button>
-      </div>
-    );
-  }
 
   return (
     <aside
@@ -171,12 +175,16 @@ export const MiniPatientPreview: React.FC<MiniPatientPreviewProps> = ({
       }`}
       aria-label="Floating Patient View Preview"
     >
-      {/* Header Deck & Controls (Draggable Handle) */}
+      {/* Header Deck & Controls (Draggable Handle with Touchscreen & Mouse Pointer Events) */}
       <div
-        onMouseDown={handleMouseDown}
-        className="bg-[#0E1118] border-b border-[#1E2535] px-2.5 py-1.5 flex items-center justify-between gap-1.5 cursor-grab active:cursor-grabbing font-mono text-[11px]"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        style={{ touchAction: 'none' }}
+        className="bg-[#0E1118] border-b border-[#1E2535] px-2.5 py-1.5 flex items-center justify-between gap-1.5 cursor-grab active:cursor-grabbing font-mono text-[11px] touch-none select-none"
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 pointer-events-none">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
@@ -228,34 +236,12 @@ export const MiniPatientPreview: React.FC<MiniPatientPreviewProps> = ({
             </button>
           )}
 
-          {/* Minimize into Floating Pill */}
-          <button
-            type="button"
-            onClick={() => setIsMinimized(true)}
-            className="p-1 bg-[#141824] hover:bg-[#1E2436] text-neutral-300 hover:text-white border border-[#232B3E] rounded-xs cursor-pointer"
-            title="Minimize Preview"
-            aria-label="Minimize"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="w-3 h-3"
-            >
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
-
-          {/* Close preview */}
+          {/* Close preview (Strictly ON/OFF Toggle - No Minimize) */}
           <button
             type="button"
             onClick={onClose}
             className="p-1 bg-[#141824] hover:bg-red-950 text-neutral-400 hover:text-red-300 border border-[#232B3E] rounded-xs cursor-pointer"
-            title="Close Preview (Toggle via top bar [👁 PREVIEW])"
+            title="Turn Off Preview (Toggle via top bar [PREVIEW [P]])"
             aria-label="Close"
           >
             <svg

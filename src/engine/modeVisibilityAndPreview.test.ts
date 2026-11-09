@@ -197,5 +197,40 @@ describe('Context-Sensitive Mode Visibility & Mini Patient Preview Verification'
 
       expect(html).toContain('BLACKOUT ACTIVE');
     });
+
+    it('has touchscreen drag support (touch-none, touch-action) and NO minimize button (strictly ON/OFF)', () => {
+      const html = renderToString(React.createElement(MiniPatientPreview, {
+        state: DEFAULT_EXAM_STATE,
+        isOpen: true,
+        onClose: () => {},
+      }));
+
+      // Touch drag styling present
+      expect(html).toContain('touch-none');
+      expect(html).toContain('touch-action:none');
+
+      // No minimize button
+      expect(html).not.toContain('aria-label="Minimize"');
+      expect(html).not.toContain('title="Minimize Preview"');
+
+      // Close button exists for clean ON/OFF
+      expect(html).toContain('aria-label="Close"');
+    });
+  });
+
+  describe('3. Mutual Exclusivity of Floating Preview and Doctor Inline View', () => {
+    it('disables inline patient viewport in doctor controller when floating preview is enabled', () => {
+      const html = renderToString(React.createElement(DoctorControllerView, {
+        state: DEFAULT_EXAM_STATE,
+        ...dummyProps,
+      }));
+
+      // Since DoctorControllerView initializes isPreviewOpen to true,
+      // the inline patient view must be disabled and show the floating preview indicator
+      expect(html).toContain('INLINE PATIENT VIEW DISABLED');
+      expect(html).toContain('ENABLE INLINE VIEW');
+      expect(html).toContain('data-testid="inline-preview-disabled"');
+      expect(html).not.toContain('data-testid="inline-preview-active"');
+    });
   });
 });
