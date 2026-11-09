@@ -33,7 +33,24 @@ import {
 import { OptotypeSvg } from '../components/optotypes/OptotypeSvg';
 import { CalibrationDialog } from '../components/modals/CalibrationDialog';
 import { PairingQrDialog } from '../components/modals/PairingQrDialog';
-import { Settings } from 'lucide-react';
+import { DigitalPhoropterConsole } from '../components/phoropter/DigitalPhoropterConsole';
+
+const SettingsIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
 
 interface DoctorControllerViewProps {
   state: ExamState;
@@ -65,6 +82,7 @@ const TEST_DECK_MODES: Array<{ id: ClinicalTestCategory; code: string; label: st
   { id: 'etdrs_wizard', code: '05', label: 'eETDRS' },
   { id: 'contrast_wizard', code: '06', label: 'CONTRAST' },
   { id: 'macular_color', code: '07', label: 'MACULAR / COLOR' },
+  { id: 'near_vision', code: '08', label: 'NEAR VISION' },
 ];
 
 export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
@@ -369,7 +387,7 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
             title="Settings & Calibration"
             aria-label="Settings"
           >
-            <Settings className="w-4 h-4" />
+            <SettingsIcon className="w-4 h-4" />
           </button>
         </div>
       </header>
@@ -590,6 +608,29 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                 >
                   RESTART
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* DIGITAL PHOROPTER REFRACTION CONSOLE */}
+          <DigitalPhoropterConsole
+            state={state}
+            updateState={updateState}
+            className="rounded border border-[#1E2330]"
+          />
+
+          {/* NEAR VISION CONTROL DECK */}
+          {state.activeCategory === 'near_vision' && (
+            <div className="bg-[#0D0F14] border border-[#1E2330] p-3 space-y-2 font-mono text-xs">
+              <div className="flex items-center justify-between text-neutral-400 text-[10px] uppercase tracking-wider">
+                <span>PRESBYOPIA 40CM READING CARD (N4–N18)</span>
+                <span className="text-amber-400 font-bold">40 CM / +2.50 D DEMAND</span>
+              </div>
+              <div className="flex items-center justify-between bg-[#08090C] border border-[#1E2330] p-2">
+                <span className="text-slate-400">ADD POWER:</span>
+                <span className="font-bold text-amber-400">
+                  OD +{(state.refraction?.od?.add ?? 0).toFixed(2)} D / OS +{(state.refraction?.os?.add ?? 0).toFixed(2)} D
+                </span>
               </div>
             </div>
           )}

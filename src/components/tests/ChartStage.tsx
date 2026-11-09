@@ -14,6 +14,7 @@ import {
   ContrastSensitivityDisplay,
   DuochromeBalanceDisplay,
   MacularColorDisplay,
+  NearReadingCardDisplay,
 } from './ClinicalModules';
 
 interface ChartStageProps {
@@ -37,7 +38,7 @@ export const ChartStage: React.FC<ChartStageProps> = ({
     return 800;
   });
 
-  const [currentWindow, setCurrentWindow] = React.useState<{
+  const currentWindowRef = React.useRef<{
     pageLogMARs: readonly number[];
     startIndex: number;
     endIndex: number;
@@ -76,14 +77,20 @@ export const ChartStage: React.FC<ChartStageProps> = ({
     : state.isolationMode;
 
   const fullChartLayout = React.useMemo(() => {
-    return computeFullChartWindow({
+    const layout = computeFullChartWindow({
       calibration: state.calibration,
       scaleFactor,
       containerHeight,
       targetLogMAR,
       hasPatientNotation: isPatientScreen && state.showNotationOnPatient,
-      currentWindow,
+      currentWindow: currentWindowRef.current,
     });
+    currentWindowRef.current = {
+      pageLogMARs: layout.pageLogMARs,
+      startIndex: layout.startIndex,
+      endIndex: layout.endIndex,
+    };
+    return layout;
   }, [
     state.calibration,
     scaleFactor,
@@ -91,30 +98,6 @@ export const ChartStage: React.FC<ChartStageProps> = ({
     targetLogMAR,
     isPatientScreen,
     state.showNotationOnPatient,
-    currentWindow,
-  ]);
-
-  React.useEffect(() => {
-    if (isolationMode === 'full') {
-      if (
-        !currentWindow ||
-        currentWindow.pageLogMARs !== fullChartLayout.pageLogMARs ||
-        currentWindow.startIndex !== fullChartLayout.startIndex ||
-        currentWindow.endIndex !== fullChartLayout.endIndex
-      ) {
-        setCurrentWindow({
-          pageLogMARs: fullChartLayout.pageLogMARs,
-          startIndex: fullChartLayout.startIndex,
-          endIndex: fullChartLayout.endIndex,
-        });
-      }
-    }
-  }, [
-    isolationMode,
-    fullChartLayout.pageLogMARs,
-    fullChartLayout.startIndex,
-    fullChartLayout.endIndex,
-    currentWindow,
   ]);
 
   if (state.isBlackout) {
@@ -142,7 +125,11 @@ export const ChartStage: React.FC<ChartStageProps> = ({
   if (state.activeCategory === 'astigmatism') {
     return (
       <div className={`w-full h-full ${mirrorClass}`}>
-        <AstigmatismDisplay state={state} scaleFactor={scaleFactor} />
+        <AstigmatismDisplay
+          state={state}
+          scaleFactor={scaleFactor}
+          onUpdateState={onUpdateState}
+        />
       </div>
     );
   }
@@ -167,6 +154,18 @@ export const ChartStage: React.FC<ChartStageProps> = ({
     return (
       <div className={`w-full h-full ${mirrorClass}`}>
         <MacularColorDisplay
+          state={state}
+          scaleFactor={scaleFactor}
+          onUpdateState={onUpdateState}
+        />
+      </div>
+    );
+  }
+
+  if (state.activeCategory === 'near_vision') {
+    return (
+      <div className={`w-full h-full ${mirrorClass}`}>
+        <NearReadingCardDisplay
           state={state}
           scaleFactor={scaleFactor}
           onUpdateState={onUpdateState}

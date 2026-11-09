@@ -1,6 +1,46 @@
-import { ExamState } from '../types/exam';
+import {
+  ExamState,
+  JccState,
+  RefractionEyeState,
+  RefractionState,
+} from '../types/exam';
 
 export const DEFAULT_D15_SHUFFLED = [8, 1, 13, 4, 11, 2, 15, 6, 10, 3, 14, 7, 12, 5, 9];
+
+export const DEFAULT_REFRACTION_EYE_STATE_OD: RefractionEyeState = {
+  sphere: 0.0,
+  cylinder: 0.0,
+  axis: 180,
+  pd: 32.0,
+  prism: 0.0,
+  prismBase: 'IN',
+  add: 0.0,
+  occlusion: 'OPEN',
+};
+
+export const DEFAULT_REFRACTION_EYE_STATE_OS: RefractionEyeState = {
+  sphere: 0.0,
+  cylinder: 0.0,
+  axis: 180,
+  pd: 32.0,
+  prism: 0.0,
+  prismBase: 'IN',
+  add: 0.0,
+  occlusion: 'OPEN',
+};
+
+export const DEFAULT_REFRACTION_STATE: RefractionState = {
+  od: { ...DEFAULT_REFRACTION_EYE_STATE_OD },
+  os: { ...DEFAULT_REFRACTION_EYE_STATE_OS },
+  binocularPd: 64.0,
+  workingDistanceCm: 40,
+};
+
+export const DEFAULT_JCC_STATE: JccState = {
+  flipPosition: 1,
+  refinementMode: 'AXIS',
+  powerStep: 0.25,
+};
 
 export const DEFAULT_EXAM_STATE: ExamState = {
   activeCategory: 'va_chart',
@@ -52,6 +92,8 @@ export const DEFAULT_EXAM_STATE: ExamState = {
     mirrorToScreenMeters: 3.0,
     distanceUnit: 'meters',
   },
+  refraction: DEFAULT_REFRACTION_STATE,
+  jcc: DEFAULT_JCC_STATE,
 };
 
 export interface WorkflowPreset {

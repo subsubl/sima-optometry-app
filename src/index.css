@@ -1,13 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --brand-color: #0ea5e9;
-  color-scheme: light dark;
+  --brand-color: #F59E0B;
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
   padding: 0;
+  background-color: #08090C;
+  color: #E2E8F0;
   accent-color: var(--brand-color);
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
@@ -41,44 +43,93 @@ dialog::backdrop {
   }
 }
 
-/* Fallback for older browsers without accent-color support (brand-consistent-forms guide) */
-@supports not (accent-color: var(--brand-color)) {
-  input[type="range"] {
-    -webkit-appearance: none;
-    appearance: none;
-    background: transparent;
-  }
+/* Custom Tactical Dark Theme Range Slider Controls (#08090C, #0D0F14, #1B1E28, #F59E0B) */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 24px;
+  background: transparent;
+  cursor: pointer;
+}
 
-  input[type="range"]::-webkit-slider-runnable-track {
-    width: 100%;
-    height: 8px;
-    background: #334155;
-    border-radius: 4px;
-  }
+input[type="range"]:focus {
+  outline: none;
+}
 
-  input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    height: 16px;
-    width: 16px;
-    border-radius: 50%;
-    background: var(--brand-color, #0ea5e9);
-    cursor: pointer;
-    margin-top: -4px;
-  }
+input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px #08090C, 0 0 0 4px #F59E0B;
+}
 
-  input[type="range"]::-moz-range-track {
-    width: 100%;
-    height: 8px;
-    background: #334155;
-    border-radius: 4px;
-  }
+input[type="range"]:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 2px #08090C, 0 0 0 4px #F59E0B;
+}
 
-  input[type="range"]::-moz-range-thumb {
-    height: 16px;
-    width: 16px;
-    border-radius: 50%;
-    background: var(--brand-color, #0ea5e9);
-    cursor: pointer;
-  }
+/* WebKit / Blink (Chrome, Edge, Safari, Opera) Track */
+input[type="range"]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 6px;
+  background: #1B1E28;
+  border: 1px solid #2D3343;
+  border-radius: 3px;
+  transition: border-color 0.15s ease;
+}
+
+/* WebKit / Blink Thumb */
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 18px;
+  width: 18px;
+  border-radius: 3px;
+  background: #F59E0B;
+  border: 1px solid #D97706;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+  cursor: pointer;
+  margin-top: -6px;
+  transition: background-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  background: #FBBF24;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+  transform: scale(1.05);
+}
+
+input[type="range"]::-webkit-slider-thumb:active {
+  background: #D97706;
+  transform: scale(0.98);
+}
+
+/* Mozilla Firefox Track */
+input[type="range"]::-moz-range-track {
+  width: 100%;
+  height: 6px;
+  background: #1B1E28;
+  border: 1px solid #2D3343;
+  border-radius: 3px;
+  transition: border-color 0.15s ease;
+}
+
+/* Mozilla Firefox Thumb */
+input[type="range"]::-moz-range-thumb {
+  height: 18px;
+  width: 18px;
+  border-radius: 3px;
+  background: #F59E0B;
+  border: 1px solid #D97706;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+input[type="range"]::-moz-range-thumb:hover {
+  background: #FBBF24;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+  transform: scale(1.05);
+}
+
+input[type="range"]::-moz-range-thumb:active {
+  background: #D97706;
+  transform: scale(0.98);
 }

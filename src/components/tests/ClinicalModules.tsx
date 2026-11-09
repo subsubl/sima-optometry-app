@@ -1,6 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import { ExamState } from '../../types/exam';
-import { calculateOneDegreePx, calculateOptotypeHeightPx } from '../../engine/acuityMath';
+import {
+  calculateOneDegreePx,
+  calculateOptotypeHeightPx,
+  getPixelsPerMm,
+} from '../../engine/acuityMath';
 import { OptotypeSvg } from '../optotypes/OptotypeSvg';
 
 interface ModuleProps {
@@ -81,10 +85,10 @@ export function analyzeD15Arrangement(arranged: number[]): {
 export const DuochromeBalanceDisplay: React.FC<ModuleProps> = ({ state, scaleFactor = 1 }) => {
   const basePx = Math.max(16, calculateOptotypeHeightPx(state.calibration, state.activeLogMAR) * scaleFactor);
   const rows = [
-    { mult: 1.58, left: ['E', '8'], right: ['9', 'P'] },
-    { mult: 1.26, left: ['D', '4', 'H'], right: ['N', '6', 'Z'] },
-    { mult: 1.0,  left: ['C', '5', 'R'], right: ['S', '2', 'K'] },
-    { mult: 0.79, left: ['V', '3', 'O'], right: ['H', '8', 'D'] },
+    { mult: 1.58, left: ['O', 'E'],      right: ['O', 'E'] },
+    { mult: 1.26, left: ['D', 'H', 'Z'], right: ['D', 'H', 'Z'] },
+    { mult: 1.0,  left: ['R', 'C', 'K'], right: ['R', 'C', 'K'] },
+    { mult: 0.79, left: ['V', 'S', 'N'], right: ['V', 'S', 'N'] },
   ];
 
   return (
@@ -135,9 +139,247 @@ export const DuochromeBalanceDisplay: React.FC<ModuleProps> = ({ state, scaleFac
 };
 
 /**
+ * Jackson Cross-Cylinder (JCC) Honeycomb & Cross-Cylinder Power Display
+ * Supports Position 1 vs Position 2 flip toggle, Axis vs Power refinement modes,
+ * and dynamically renders Red and White power dots aligned with cylinder axis.
+ */
+export const JccCrossCylinderDisplay: React.FC<ModuleProps> = ({
+  state,
+  scaleFactor = 1,
+  onUpdateState,
+}) => {
+  const oneDegPx = Math.max(24, calculateOneDegreePx(state.calibration) * scaleFactor);
+  const radius = Math.min(340 * scaleFactor, oneDegPx * 4.5);
+  const fgColor = state.invertPolarity ? '#FFFFFF' : '#000000';
+  const bgColor = state.invertPolarity ? '#000000' : '#FFFFFF';
+
+  const jcc = state.jcc || { flipPosition: 1, refinementMode: 'AXIS', powerStep: 0.25 };
+  const flip = jcc.flipPosition;
+  const mode = jcc.refinementMode;
+  const powerStep = jcc.powerStep;
+  const cylAxis = ((state.astigmatismAxisDeg % 180) + 180) % 180;
+
+  // Calculate Red and White marker angles
+  let redDeg: number;
+  let whiteDeg: number;
+
+  if (mode === 'AXIS') {
+    // Straddle cylinder axis at +/- 45 degrees
+    redDeg = flip === 1 ? cylAxis - 45 : cylAxis + 45;
+    whiteDeg = flip === 1 ? cylAxis + 45 : cylAxis - 45;
+  } else {
+    // Parallel and perpendicular to cylinder axis
+    redDeg = flip === 1 ? cylAxis : cylAxis + 90;
+    whiteDeg = flip === 1 ? cylAxis + 90 : cylAxis;
+  }
+
+  redDeg = ((redDeg % 180) + 180) % 180;
+  whiteDeg = ((whiteDeg % 180) + 180) % 180;
+
+  // 19-Dot Hexagonal Honeycomb Target Coordinates
+  const hexCoords: Array<[number, number]> = [
+    [0, 0],
+    [1, 0], [0.5, 0.866], [-0.5, 0.866], [-1, 0], [-0.5, -0.866], [0.5, -0.866],
+    [2, 0], [1.5, 0.866], [1, 1.732], [0, 1.732], [-1, 1.732], [-1.5, 0.866],
+    [-2, 0], [-1.5, -0.866], [-1, -1.732], [0, -1.732], [1, -1.732], [1.5, -0.866],
+  ];
+
+  // Helper to project polar degree angle to SVG Cartesian coordinates
+  const polarToSvg = (deg: number, r: number) => {
+    const rad = ((180 - deg) * Math.PI) / 180;
+    return {
+      x: Math.cos(rad) * r,
+      y: -Math.sin(rad) * r,
+    };
+  };
+
+  const handleFlip = () => {
+    if (!onUpdateState) return;
+    onUpdateState((prev) => ({
+      ...prev,
+      jcc: {
+        ...prev.jcc,
+        flipPosition: prev.jcc?.flipPosition === 1 ? 2 : 1,
+      },
+    }));
+  };
+
+  const handleToggleMode = () => {
+    if (!onUpdateState) return;
+    onUpdateState((prev) => ({
+      ...prev,
+      jcc: {
+        ...prev.jcc,
+        refinementMode: prev.jcc?.refinementMode === 'AXIS' ? 'POWER' : 'AXIS',
+      },
+    }));
+  };
+
+  const handleToggleStep = () => {
+    if (!onUpdateState) return;
+    onUpdateState((prev) => ({
+      ...prev,
+      jcc: {
+        ...prev.jcc,
+        powerStep: prev.jcc?.powerStep === 0.25 ? 0.5 : 0.25,
+      },
+    }));
+  };
+
+  const axisP1 = polarToSvg(cylAxis, 142);
+  const axisP2 = polarToSvg(cylAxis + 180, 142);
+
+  const redP1 = polarToSvg(redDeg, 142);
+  const redP2 = polarToSvg(redDeg + 180, 142);
+
+  const whiteP1 = polarToSvg(whiteDeg, 142);
+  const whiteP2 = polarToSvg(whiteDeg + 180, 142);
+
+  return (
+    <div
+      className="w-full h-full flex flex-col items-center justify-center p-2 sm:p-4 select-none relative overflow-hidden"
+      style={{ backgroundColor: bgColor }}
+    >
+      {/* Tactical HUD Header */}
+      <div className="absolute top-2 sm:top-4 flex items-center gap-2 sm:gap-3 font-mono z-10">
+        <button
+          type="button"
+          onClick={handleFlip}
+          disabled={!onUpdateState}
+          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs uppercase tracking-wider rounded border border-amber-600 shadow cursor-pointer transition active:scale-95 flex items-center gap-1.5"
+        >
+          <span>FLIP JCC</span>
+          <span className="bg-black text-amber-400 px-1.5 py-0.5 rounded text-[10px]">
+            POS {flip}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleToggleMode}
+          disabled={!onUpdateState}
+          className="px-3 py-1.5 bg-[#12151E] hover:bg-[#1E2330] text-neutral-200 text-xs uppercase tracking-wider rounded border border-[#2A3142] cursor-pointer transition flex items-center gap-1.5"
+        >
+          <span className="text-neutral-500 text-[10px]">MODE:</span>
+          <span className="font-bold text-amber-400">{mode}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleToggleStep}
+          disabled={!onUpdateState}
+          className="px-2.5 py-1.5 bg-[#12151E] hover:bg-[#1E2330] text-neutral-300 text-xs rounded border border-[#2A3142] cursor-pointer transition"
+        >
+          <span className="text-neutral-500 text-[10px] mr-1">STEP:</span>
+          <span className="font-bold text-white">±{powerStep.toFixed(2)} D</span>
+        </button>
+      </div>
+
+      {/* Cross-Cylinder Graphic */}
+      <div className="relative flex items-center justify-center my-auto">
+        <svg
+          width={radius * 2.5}
+          height={radius * 2.5}
+          viewBox="-170 -170 340 340"
+          className="overflow-visible"
+        >
+          {/* Outer Bezel Guide Ring */}
+          <circle
+            cx="0"
+            cy="0"
+            r="142"
+            fill="none"
+            stroke={fgColor}
+            strokeWidth="2.5"
+            strokeOpacity="0.25"
+          />
+
+          {/* Spectacle Cylinder Axis Alignment Hairline */}
+          <line
+            x1={axisP1.x}
+            y1={axisP1.y}
+            x2={axisP2.x}
+            y2={axisP2.y}
+            stroke="#F59E0B"
+            strokeWidth="1.5"
+            strokeDasharray="4 4"
+            strokeOpacity="0.75"
+          />
+
+          {/* Central 19-Dot Hexagonal Honeycomb Target */}
+          {hexCoords.map(([hx, hy], idx) => (
+            <circle
+              key={`dot-${idx}`}
+              cx={hx * 32}
+              cy={hy * 32}
+              r={9.0}
+              fill={fgColor}
+            />
+          ))}
+
+          {/* RED Minus-Cylinder Power Dots */}
+          {[redP1, redP2].map((p, i) => (
+            <g key={`red-${i}`} transform={`translate(${p.x}, ${p.y})`}>
+              <circle cx="0" cy="0" r="13" fill="#EF4444" stroke="#7F1D1D" strokeWidth="2.5" />
+              <text
+                x="0"
+                y="4.5"
+                textAnchor="middle"
+                fill="#FFFFFF"
+                fontSize="14"
+                fontWeight="900"
+                fontFamily="sans-serif"
+              >
+                −
+              </text>
+            </g>
+          ))}
+
+          {/* WHITE Plus-Cylinder Power Dots */}
+          {[whiteP1, whiteP2].map((p, i) => (
+            <g key={`white-${i}`} transform={`translate(${p.x}, ${p.y})`}>
+              <circle cx="0" cy="0" r="13" fill="#FFFFFF" stroke="#374151" strokeWidth="2.5" />
+              <text
+                x="0"
+                y="4.5"
+                textAnchor="middle"
+                fill="#111827"
+                fontSize="14"
+                fontWeight="900"
+                fontFamily="sans-serif"
+              >
+                +
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
+
+      {/* Clinical Guidance Footer */}
+      <div className="absolute bottom-2 sm:bottom-4 text-center font-mono text-[10px] sm:text-[11px] max-w-xl px-3 py-1.5 sm:px-4 sm:py-2 bg-[#0D0F14]/90 border border-[#1E2330] rounded text-neutral-300 pointer-events-none">
+        {mode === 'AXIS' ? (
+          <div>
+            <span className="text-amber-400 font-bold">AXIS REFINEMENT:</span> Ask patient:
+            "Is the honeycomb clearer on 1 or 2?" Rotate spectacle cylinder axis toward the
+            <span className="text-red-400 font-bold ml-1">RED DOT</span> of the clearer position.
+          </div>
+        ) : (
+          <div>
+            <span className="text-amber-400 font-bold">POWER REFINEMENT:</span> Ask patient:
+            "Is 1 or 2 clearer?" If Red clearer:
+            <span className="text-red-400 font-bold ml-1">Add -0.25D Cyl</span>. If White clearer:
+            <span className="text-white font-bold ml-1">Subtract -0.25D Cyl</span>.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/**
  * 2. Astigmatism Suite: Clock Dial, Sunburst Fan, and Jackson Cross-Cylinder (JCC) Dots
  */
-export const AstigmatismDisplay: React.FC<ModuleProps> = ({ state, scaleFactor = 1 }) => {
+export const AstigmatismDisplay: React.FC<ModuleProps> = ({ state, scaleFactor = 1, onUpdateState }) => {
   const oneDegPx = Math.max(24, calculateOneDegreePx(state.calibration) * scaleFactor);
   const radius = Math.min(340 * scaleFactor, oneDegPx * 4.5);
   const fgColor = state.invertPolarity ? '#FFFFFF' : '#000000';
@@ -145,28 +387,12 @@ export const AstigmatismDisplay: React.FC<ModuleProps> = ({ state, scaleFactor =
   const accentColor = '#EF4444';
 
   if (state.astigmatismMode === 'jcc_dots') {
-    const hexCoords: Array<[number, number]> = [
-      [0, 0],
-      [1, 0], [0.5, 0.866], [-0.5, 0.866], [-1, 0], [-0.5, -0.866], [0.5, -0.866],
-      [2, 0], [1.5, 0.866], [1, 1.732], [0, 1.732], [-1, 1.732], [-1.5, 0.866],
-      [-2, 0], [-1.5, -0.866], [-1, -1.732], [0, -1.732], [1, -1.732], [1.5, -0.866],
-    ];
-
     return (
-      <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: bgColor }}>
-        <svg width={radius * 2.4} height={radius * 2.4} viewBox="-150 -150 300 300">
-          <circle cx="0" cy="0" r="128" fill="none" stroke={fgColor} strokeWidth="2.5" strokeOpacity="0.25" />
-          {hexCoords.map(([hx, hy], idx) => (
-            <circle
-              key={idx}
-              cx={hx * 38}
-              cy={hy * 38}
-              r={10.5}
-              fill={fgColor}
-            />
-          ))}
-        </svg>
-      </div>
+      <JccCrossCylinderDisplay
+        state={state}
+        scaleFactor={scaleFactor}
+        onUpdateState={onUpdateState}
+      />
     );
   }
 
@@ -679,3 +905,262 @@ export const MacularColorDisplay: React.FC<ModuleProps> = ({
     </div>
   );
 };
+
+export interface NearVisionTier {
+  id: string;
+  jaeger: string;
+  nPoint: string;
+  mUnit: string;
+  snellenDistanceEquiv: string;
+  logMAR: number;
+  text: string;
+}
+
+export const NEAR_VISION_TIERS: NearVisionTier[] = [
+  {
+    id: 'N4',
+    jaeger: 'J1+',
+    nPoint: 'N4',
+    mUnit: '0.4M',
+    snellenDistanceEquiv: '20/20',
+    logMAR: 0.0,
+    text: 'Accommodation declines progressively with age due to decreased elasticity of the crystalline lens capsule. Precise near point refraction determines the optimal reading addition for comfortable binocular focus at forty centimeters.',
+  },
+  {
+    id: 'N5',
+    jaeger: 'J1',
+    nPoint: 'N5',
+    mUnit: '0.5M',
+    snellenDistanceEquiv: '20/25',
+    logMAR: 0.1,
+    text: 'Presbyopia manifests when the accommodative amplitude drops below three diopters, necessitating plus lens addition for standard reading and digital screen tasks.',
+  },
+  {
+    id: 'N6',
+    jaeger: 'J2',
+    nPoint: 'N6',
+    mUnit: '0.6M',
+    snellenDistanceEquiv: '20/30',
+    logMAR: 0.2,
+    text: 'Standard newsprint and mobile device typography correspond to this visual acuity level. Refinement of spherical reading power ensures clear vision without ocular strain.',
+  },
+  {
+    id: 'N8',
+    jaeger: 'J3',
+    nPoint: 'N8',
+    mUnit: '0.8M',
+    snellenDistanceEquiv: '20/40',
+    logMAR: 0.3,
+    text: 'Comfortable reading vision requires a reserve of at least one third of total accommodative amplitude to prevent asthenopia during prolonged near work.',
+  },
+  {
+    id: 'N10',
+    jaeger: 'J7',
+    nPoint: 'N10',
+    mUnit: '1.0M',
+    snellenDistanceEquiv: '20/50',
+    logMAR: 0.4,
+    text: 'Graded reading paragraphs provide standardized text for evaluating reading fluency, critical print size, and optimal magnification for presbyopic correction.',
+  },
+  {
+    id: 'N14',
+    jaeger: 'J10',
+    nPoint: 'N14',
+    mUnit: '1.6M',
+    snellenDistanceEquiv: '20/80',
+    logMAR: 0.6,
+    text: 'Large print reading cards assist in determining low-vision requirements and intermediate working distance adaptations.',
+  },
+  {
+    id: 'N18',
+    jaeger: 'J14',
+    nPoint: 'N18',
+    mUnit: '2.0M',
+    snellenDistanceEquiv: '20/100',
+    logMAR: 0.7,
+    text: 'HIGH CONTRAST HEADLINE FOR RAPID NEAR ACUITY SCREENING AND MONOCULAR OCCLUSION VERIFICATION.',
+  },
+];
+
+/**
+ * Calibrated 40cm Presbyopia Reading Card Display
+ * Renders standardized optometric paragraphs (N4 to N18 / J1+ to J14)
+ * with millimeter-calibrated optical scaling and near ADD controls.
+ */
+export const NearReadingCardDisplay: React.FC<ModuleProps> = ({
+  state,
+  scaleFactor = 1,
+  onUpdateState,
+}) => {
+  const [isolatedTierId, setIsolatedTierId] = React.useState<string | 'ALL'>('ALL');
+
+  // Exact optical scaling at 40cm (0.40m) viewing distance
+  const ppm = getPixelsPerMm(state.calibration);
+  const dMeters = 0.40; // Calibrated 40cm working distance
+  const fiveArcMinRad = (5 * Math.PI) / (60 * 180);
+
+  const calculateNearFontPx = (logMAR: number) => {
+    const angleRad = fiveArcMinRad * Math.pow(10, logMAR);
+    const capHeightMm = 2 * (dMeters * 1000) * Math.tan(angleRad / 2);
+    const capHeightPx = capHeightMm * ppm * scaleFactor;
+    // Standard serif font cap-height ratio is ~0.70 of total font size
+    const fontSize = capHeightPx / 0.70;
+    // Ensure readable minimum in scaled down doctor previews
+    return Math.max(10 * scaleFactor, Math.round(fontSize * 10) / 10);
+  };
+
+  const isDark = state.invertPolarity;
+  const cardBg = isDark ? '#0A0C10' : '#FAFAFA';
+  const cardBorder = isDark ? '#1F2430' : '#E5E7EB';
+  const textColor = isDark ? '#E2E8F0' : '#111827';
+  const metaColor = isDark ? '#94A3B8' : '#6B7280';
+
+  const odAdd = state.refraction?.od?.add ?? 0;
+  const osAdd = state.refraction?.os?.add ?? 0;
+
+  const handleStepAdd = (delta: number) => {
+    if (!onUpdateState) return;
+    onUpdateState((prev) => ({
+      ...prev,
+      refraction: {
+        ...prev.refraction,
+        od: {
+          ...prev.refraction.od,
+          add: Math.max(0, Math.min(4.0, Math.round((prev.refraction.od.add + delta) * 100) / 100)),
+        },
+        os: {
+          ...prev.refraction.os,
+          add: Math.max(0, Math.min(4.0, Math.round((prev.refraction.os.add + delta) * 100) / 100)),
+        },
+      },
+    }));
+  };
+
+  const visibleTiers =
+    isolatedTierId === 'ALL'
+      ? NEAR_VISION_TIERS
+      : NEAR_VISION_TIERS.filter((t) => t.id === isolatedTierId);
+
+  return (
+    <div
+      className="w-full h-full flex flex-col items-center select-none overflow-y-auto p-3 sm:p-6"
+      style={{ backgroundColor: isDark ? '#050608' : '#E5E7EB' }}
+    >
+      {/* Telemetry Header Bar */}
+      <div className="w-full max-w-4xl bg-[#0D0F14] border border-[#1E2330] p-2.5 sm:p-3 rounded mb-3 font-mono text-xs flex flex-wrap items-center justify-between gap-2 sm:gap-3 shadow">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/40 rounded font-bold text-[10px] sm:text-xs">
+            CALIBRATED 40 CM (16 IN)
+          </span>
+          <span className="text-neutral-400 text-[11px] sm:text-xs hidden sm:inline">
+            ACCOMMODATIVE DEMAND: <strong className="text-white">+2.50 D</strong>
+          </span>
+        </div>
+
+        {/* Near ADD Refinement Stepper */}
+        <div className="flex items-center gap-2">
+          <span className="text-neutral-400 text-[11px] sm:text-xs">ADD:</span>
+          <span className="font-bold text-amber-400 font-mono text-[11px] sm:text-xs">
+            OD +{odAdd.toFixed(2)} / OS +{osAdd.toFixed(2)}
+          </span>
+          {onUpdateState && (
+            <div className="flex items-center gap-1 ml-1">
+              <button
+                type="button"
+                onClick={() => handleStepAdd(-0.25)}
+                className="px-2 py-0.5 bg-[#1A1F2C] hover:bg-[#252C3E] text-neutral-200 border border-[#2D3548] rounded cursor-pointer text-xs"
+              >
+                −0.25
+              </button>
+              <button
+                type="button"
+                onClick={() => handleStepAdd(0.25)}
+                className="px-2 py-0.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded cursor-pointer text-xs"
+              >
+                +0.25
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Paragraph Tier Filter Buttons */}
+      <div className="w-full max-w-4xl flex items-center justify-start gap-1.5 overflow-x-auto pb-2 mb-3 font-mono text-[11px]">
+        <button
+          type="button"
+          onClick={() => setIsolatedTierId('ALL')}
+          className={`px-2.5 py-1 rounded border cursor-pointer shrink-0 ${
+            isolatedTierId === 'ALL'
+              ? 'bg-amber-500 text-black border-amber-400 font-bold'
+              : 'bg-[#12151E] text-neutral-400 border-[#222836]'
+          }`}
+        >
+          ALL (FULL CARD)
+        </button>
+        {NEAR_VISION_TIERS.map((tier) => (
+          <button
+            key={tier.id}
+            type="button"
+            onClick={() => setIsolatedTierId(tier.id)}
+            className={`px-2 py-1 rounded border cursor-pointer shrink-0 ${
+              isolatedTierId === tier.id
+                ? 'bg-amber-500 text-black border-amber-400 font-bold'
+                : 'bg-[#12151E] text-neutral-400 border-[#222836]'
+            }`}
+          >
+            {tier.id} ({tier.jaeger})
+          </button>
+        ))}
+      </div>
+
+      {/* Calibrated Reading Card Body */}
+      <div
+        className="w-full max-w-4xl shadow-xl border rounded p-4 sm:p-8 space-y-4 sm:space-y-6 transition-colors"
+        style={{
+          backgroundColor: cardBg,
+          borderColor: cardBorder,
+          color: textColor,
+        }}
+      >
+        <div className="border-b pb-2 sm:pb-3 mb-3 sm:mb-4 flex items-center justify-between" style={{ borderColor: cardBorder }}>
+          <span className="font-serif font-black tracking-wider text-xs sm:text-sm uppercase">
+            Standard Optometric Near Vision Reading Card
+          </span>
+          <span className="font-mono text-[9px] sm:text-[10px]" style={{ color: metaColor }}>
+            ISO 8596 CALIBRATED • 40 CM
+          </span>
+        </div>
+
+        {visibleTiers.map((tier) => {
+          const fontPx = calculateNearFontPx(tier.logMAR);
+          return (
+            <div
+              key={tier.id}
+              className="space-y-1 sm:space-y-1.5 pb-3 sm:pb-4 border-b last:border-b-0 cursor-pointer hover:opacity-90"
+              style={{ borderColor: cardBorder }}
+              onClick={() => setIsolatedTierId(isolatedTierId === tier.id ? 'ALL' : tier.id)}
+            >
+              <div className="flex items-center gap-2 font-mono text-[9px] sm:text-[10px]" style={{ color: metaColor }}>
+                <span className="font-bold text-amber-500">[{tier.id}]</span>
+                <span>{tier.jaeger}</span>
+                <span>•</span>
+                <span>{tier.mUnit}</span>
+                <span>•</span>
+                <span>{tier.snellenDistanceEquiv}</span>
+                <span>•</span>
+                <span>LogMAR +{tier.logMAR.toFixed(1)}</span>
+              </div>
+              <p
+                className="font-serif leading-relaxed text-justify"
+                style={{ fontSize: `${fontPx}px` }}
+              >
+                {tier.text}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+

@@ -49,20 +49,12 @@ export const OptotypeSvg: React.FC<OptotypeSvgProps> = ({
           C_UP_RIGHT: 315,
         };
         const rot = angleMap[symbol] ?? 0;
-        const maskId = `landolt-mask-${symbol}-${Math.random().toString(36).slice(2, 7)}`;
         return (
-          <g transform={`rotate(${rot} 2.5 2.5)`}>
-            <defs>
-              <mask id={maskId}>
-                <rect x="-1" y="-1" width="7" height="7" fill="white" />
-                {/* Inner hole of radius 1.5 (diameter 3.0) */}
-                <circle cx="2.5" cy="2.5" r="1.5" fill="black" />
-                {/* 1-unit gap on the right side (y from 2.0 to 3.0) */}
-                <rect x="2.5" y="2.0" width="3.0" height="1.0" fill="black" />
-              </mask>
-            </defs>
-            <circle cx="2.5" cy="2.5" r="2.5" fill={color} mask={`url(#${maskId})`} />
-          </g>
+          <path
+            fill={color}
+            transform={`rotate(${rot} 2.5 2.5)`}
+            d="M 4.9495,3.0 A 2.5 2.5 0 1 1 4.9495,2.0 L 3.9142,2.0 A 1.5 1.5 0 1 0 3.9142,3.0 Z"
+          />
         );
       }
 

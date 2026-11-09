@@ -24,7 +24,7 @@ export const App: React.FC = () => {
     isConnected,
     networkInfo,
     refreshNetworkInfo,
-  } = useExamSync();
+  } = useExamSync({ enableNetworkPolling: role === 'doctor' });
 
   useEffect(() => {
     const onHashChange = () => {

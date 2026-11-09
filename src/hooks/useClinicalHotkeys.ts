@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { ACUITY_LADDER } from '../engine/acuityMath';
+import { ACUITY_LADDER, getAcuitySpec } from '../engine/acuityMath';
 import {
   AcuityNotation,
   ClinicalTestCategory,
@@ -23,11 +23,22 @@ export const CLINICAL_CATEGORY_ORDER: ClinicalTestCategory[] = [
   'etdrs_wizard',
   'contrast_wizard',
   'macular_color',
+  'near_vision',
 ];
 
 const NOTATION_ORDER: AcuityNotation[] = ['snellen_us', 'snellen_metric', 'decimal', 'logmar'];
 const DUOCHROME_ORDER: DuochromeOverlay[] = ['none', 'split', 'red_only', 'green_only'];
 const CROWDING_ORDER: CrowdingMode[] = ['none', 'bars_0.5x', 'bars_1.0x', 'box'];
+
+/**
+ * Returns the number of optotypes physically rendered on the active line.
+ */
+export function getActiveLineLetterCount(state: ExamState): number {
+  if (state.activeCategory === 'etdrs_wizard') return 5;
+  if (state.isolationMode === 'column') return 5;
+  if (state.optotypeSet === 'dyop') return 1;
+  return getAcuitySpec(state.activeLogMAR).defaultLettersCount;
+}
 
 export function useClinicalHotkeys({ state, updateState, randomizeOptotypes }: HotkeyHandlers) {
   useEffect(() => {
@@ -127,28 +138,34 @@ export function useClinicalHotkeys({ state, updateState, randomizeOptotypes }: H
         case '[':
         case ',': {
           e.preventDefault();
-          updateState((prev) => ({
-            ...prev,
-            activeLetterIndex: (prev.activeLetterIndex + 4) % 5,
-            astigmatismAxisDeg:
-              prev.activeCategory === 'astigmatism'
-                ? Math.max(0, prev.astigmatismAxisDeg - 10)
-                : prev.astigmatismAxisDeg,
-          }));
+          updateState((prev) => {
+            const maxLetters = getActiveLineLetterCount(prev);
+            return {
+              ...prev,
+              activeLetterIndex: (prev.activeLetterIndex - 1 + maxLetters) % maxLetters,
+              astigmatismAxisDeg:
+                prev.activeCategory === 'astigmatism'
+                  ? Math.max(0, prev.astigmatismAxisDeg - 10)
+                  : prev.astigmatismAxisDeg,
+            };
+          });
           break;
         }
 
         case ']':
         case '.': {
           e.preventDefault();
-          updateState((prev) => ({
-            ...prev,
-            activeLetterIndex: (prev.activeLetterIndex + 1) % 5,
-            astigmatismAxisDeg:
-              prev.activeCategory === 'astigmatism'
-                ? Math.min(180, prev.astigmatismAxisDeg + 10)
-                : prev.astigmatismAxisDeg,
-          }));
+          updateState((prev) => {
+            const maxLetters = getActiveLineLetterCount(prev);
+            return {
+              ...prev,
+              activeLetterIndex: (prev.activeLetterIndex + 1) % maxLetters,
+              astigmatismAxisDeg:
+                prev.activeCategory === 'astigmatism'
+                  ? Math.min(180, prev.astigmatismAxisDeg + 10)
+                  : prev.astigmatismAxisDeg,
+            };
+          });
           break;
         }
 
@@ -234,6 +251,19 @@ export function useClinicalHotkeys({ state, updateState, randomizeOptotypes }: H
           break;
         }
 
+        case 'j':
+        case 'J': {
+          e.preventDefault();
+          updateState((prev) => ({
+            ...prev,
+            jcc: {
+              ...prev.jcc,
+              flipPosition: prev.jcc?.flipPosition === 1 ? 2 : 1,
+            },
+          }));
+          break;
+        }
+
         case 'b':
         case 'B': {
           e.preventDefault();
@@ -249,6 +279,12 @@ export function useClinicalHotkeys({ state, updateState, randomizeOptotypes }: H
           e.preventDefault();
           const letterIdx = Number(e.key) - 1;
           updateState((prev) => {
+            const maxLetters = getActiveLineLetterCount(prev);
+            // GUARD: Ignore hotkeys for letter positions that do not exist on the current line
+            if (letterIdx >= maxLetters) {
+              return prev;
+            }
+
             if (prev.activeCategory === 'etdrs_wizard') {
               const curLog = prev.etdrsWizard.currentLogMAR;
               const key = curLog.toFixed(1);

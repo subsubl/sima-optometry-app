@@ -112,15 +112,26 @@ export function formatAcuityNotation(logMAR: number, notation: AcuityNotation): 
 
 /**
  * Computes interpolated LogMAR and clinical notation based on letter-by-letter scoring on the active line.
- * Each letter on a 5-letter line is worth 0.02 LogMAR.
+ * Accounts for variable optotype counts (1 to 5 letters) on high-LogMAR lines.
+ *
+ * @param activeLogMAR Current line LogMAR value
+ * @param scores Array of letter score statuses
+ * @param notation Clinical notation format (snellen_us, snellen_metric, decimal, logmar)
+ * @param lineOptotypeCount Optional explicit letter count for the line (defaults to AcuityLadder spec)
  */
 export function computeScoredLineAcuity(
   activeLogMAR: number,
   scores: LetterScoreStatus[],
-  notation: AcuityNotation
+  notation: AcuityNotation,
+  lineOptotypeCount?: number
 ): { interpolatedLogMAR: number; label: string; correctCount: number; testedCount: number } {
-  const correctCount = scores.filter((s) => s === 'correct').length;
-  const incorrectCount = scores.filter((s) => s === 'incorrect').length;
+  const spec = getAcuitySpec(activeLogMAR);
+  const effectiveCount = Math.max(1, lineOptotypeCount ?? spec.defaultLettersCount ?? 5);
+
+  // Only consider scores up to the actual number of letters on this line
+  const effectiveScores = scores.slice(0, effectiveCount);
+  const correctCount = effectiveScores.filter((s) => s === 'correct').length;
+  const incorrectCount = effectiveScores.filter((s) => s === 'incorrect').length;
   const testedCount = correctCount + incorrectCount;
   const baseLabel = formatAcuityNotation(activeLogMAR, notation);
 
@@ -128,26 +139,34 @@ export function computeScoredLineAcuity(
     return { interpolatedLogMAR: activeLogMAR, label: baseLabel, correctCount: 0, testedCount: 0 };
   }
 
-  // If 3 or more correct out of 5, credit the line minus missed letters; otherwise credit previous line plus correct letters
-  const missedCount = scores.length - correctCount;
-  const interpolatedLogMAR = Number((activeLogMAR + missedCount * 0.02).toFixed(2));
+  // Missed count is strictly relative to the line's actual capacity
+  const missedCount = effectiveCount - correctCount;
+  // Dynamic per-letter weight: 0.10 / effectiveCount (for standard 5-letter line: 0.02)
+  const perLetterWeight = 0.10 / effectiveCount;
+  const rawLogMAR = activeLogMAR + missedCount * perLetterWeight;
+  const interpolatedLogMAR = Number(rawLogMAR.toFixed(effectiveCount === 3 ? 2 : 3));
 
   let modifier = '';
-  if (correctCount === scores.length) {
+  if (correctCount === effectiveCount) {
     modifier = ' (Full)';
-  } else if (correctCount >= 3) {
-    modifier = ` -${missedCount}`;
-  } else if (correctCount > 0) {
-    const prevSpec = getAcuitySpec(Math.min(1.3, activeLogMAR + 0.1));
-    const prevBase = formatAcuityNotation(prevSpec.logMAR, notation);
-    return {
-      interpolatedLogMAR,
-      label: `${prevBase} +${correctCount}`,
-      correctCount,
-      testedCount,
-    };
+  } else if (correctCount === 0) {
+    modifier = ` (0/${effectiveCount})`;
   } else {
-    modifier = ` (0/${scores.length})`;
+    // Majority threshold: >= 1 of 1-2, >= 2 of 3-4, >= 3 of 5
+    const passThreshold = Math.ceil(effectiveCount / 2);
+
+    if (correctCount >= passThreshold) {
+      modifier = ` -${missedCount}`;
+    } else {
+      const prevSpec = getAcuitySpec(Math.min(1.3, activeLogMAR + 0.1));
+      const prevBase = formatAcuityNotation(prevSpec.logMAR, notation);
+      return {
+        interpolatedLogMAR,
+        label: `${prevBase} +${correctCount}`,
+        correctCount,
+        testedCount,
+      };
+    }
   }
 
   return {
