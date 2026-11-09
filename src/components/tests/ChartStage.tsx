@@ -243,15 +243,39 @@ export const ChartStage: React.FC<ChartStageProps> = ({
       return renderWithCrowding(rowContent, activePx);
     }
 
-    const activeIdx = ACUITY_LADDER.findIndex(
-      (l) => Math.abs(l.logMAR - targetLogMAR) < 0.01
-    );
-    const centerIdx = activeIdx >= 0 ? activeIdx : 13;
-    const startIdx = Math.max(0, Math.min(ACUITY_LADDER.length - 5, centerIdx - 2));
-    const visibleLines = ACUITY_LADDER.slice(startIdx, startIdx + 5);
+    // FULL MULTI-LINE CHART (Two Standard Clinical Pages: Screening Page 1 vs Refraction Page 2)
+    // Page 1: 20/200 (1.0) down to 20/40 (0.3) — 7 rows
+    // Page 2: 20/50 (0.4) down to 20/10 (-0.3) — 8 rows
+    // Overlapping 20/50 & 20/40 allows stepping up/down without changing pages.
+    const PAGE_LOW_VISION = [1.3, 1.2, 1.1, 1.0, 0.8, 0.6];
+    const PAGE_1_LARGE = [1.0, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3];
+    const PAGE_2_REFRACTION = [0.4, 0.3, 0.2, 0.1, 0.0, -0.1, -0.2, -0.3];
+
+    let pageLogMARs: number[];
+    if (targetLogMAR > 1.0) {
+      pageLogMARs = PAGE_LOW_VISION;
+    } else if (targetLogMAR >= 0.4) {
+      pageLogMARs = PAGE_1_LARGE;
+    } else {
+      pageLogMARs = PAGE_2_REFRACTION;
+    }
+
+    const visibleLines = pageLogMARs.map((lm) => {
+      const match = ACUITY_LADDER.find((l) => Math.abs(l.logMAR - lm) < 0.01);
+      return (
+        match || {
+          logMAR: lm,
+          snellenUS: '20/20',
+          snellenMetric: '6/6',
+          decimal: '1.00',
+          defaultLettersCount: 5,
+          etdrsBaseScore: 85,
+        }
+      );
+    });
 
     return (
-      <div className="flex flex-col items-center justify-center gap-6">
+      <div className="flex flex-col items-center justify-center gap-3 sm:gap-4 max-h-full py-2">
         {visibleLines.map((lineSpec) => {
           const linePx = Math.max(
             4,
@@ -261,16 +285,27 @@ export const ChartStage: React.FC<ChartStageProps> = ({
           const isCurrent = Math.abs(lineSpec.logMAR - targetLogMAR) < 0.01;
 
           return (
-            <div key={lineSpec.logMAR} className="relative flex items-center justify-center">
-              {isCurrent && (
-                <div
-                  className="absolute -left-8 w-3 h-1.5 rounded-full"
-                  style={{ backgroundColor: '#EF4444' }}
-                />
+            <div
+              key={lineSpec.logMAR}
+              onClick={() => onUpdateState?.({ activeLogMAR: lineSpec.logMAR })}
+              className={`relative flex items-center justify-center px-4 py-1 cursor-pointer transition-opacity ${
+                isCurrent ? 'opacity-100' : 'opacity-80 hover:opacity-100'
+              }`}
+            >
+              {/* Optional Acuity notation at the left edge if enabled */}
+              {isPatientScreen && state.showNotationOnPatient && (
+                <span
+                  className="absolute -left-16 text-xs font-mono font-bold tracking-wider"
+                  style={{ color: effectiveFgColor, opacity: isCurrent ? 0.9 : 0.4 }}
+                >
+                  {formatAcuityNotation(lineSpec.logMAR, state.doctorNotation)}
+                </span>
               )}
+
+              {/* Optotypes on this line */}
               <div
                 className="flex items-center justify-center"
-                style={{ gap: `${linePx * 0.9}px` }}
+                style={{ gap: `${linePx * 0.88}px` }}
               >
                 {lineSyms.map((sym, i) => (
                   <OptotypeSvg
@@ -281,6 +316,19 @@ export const ChartStage: React.FC<ChartStageProps> = ({
                   />
                 ))}
               </div>
+
+              {/* Red underline indicator beneath the currently active size row */}
+              {isCurrent && (
+                <div
+                  className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 rounded-full transition-all duration-150 pointer-events-none"
+                  style={{
+                    width: `calc(100% + ${Math.max(12, linePx * 0.4)}px)`,
+                    height: `${Math.max(2.5, 3.5 * scaleFactor)}px`,
+                    backgroundColor: '#DC2626',
+                    boxShadow: '0 0 8px rgba(220, 38, 38, 0.75)',
+                  }}
+                />
+              )}
             </div>
           );
         })}
