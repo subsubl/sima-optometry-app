@@ -73,8 +73,16 @@ export const PairingQrDialog: React.FC<PairingQrDialogProps> = ({
     };
   }, [onClose]);
 
-  const activeLanIp = networkInfo?.lanIp || (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' ? window.location.hostname : '127.0.0.1');
-  const port = networkInfo?.port || (Number(window.location.port) || 3020);
+  const defaultHostname =
+    typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1';
+  const defaultPort =
+    typeof window !== 'undefined' ? Number(window.location.port) || 3020 : 3020;
+  const activeLanIp =
+    networkInfo?.lanIp ||
+    (defaultHostname !== 'localhost' && defaultHostname !== '127.0.0.1'
+      ? defaultHostname
+      : '127.0.0.1');
+  const port = networkInfo?.port || defaultPort;
   const doctorUrl = networkInfo?.doctorUrl || `http://${activeLanIp}:${port}/#/doctor`;
   const patientUrl = networkInfo?.patientUrl || `http://${activeLanIp}:${port}/#/patient`;
 

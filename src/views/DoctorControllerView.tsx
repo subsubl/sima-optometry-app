@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   AcuityNotation,
   AstigmatismMode,
@@ -34,6 +34,7 @@ import { OptotypeSvg } from '../components/optotypes/OptotypeSvg';
 import { CalibrationDialog } from '../components/modals/CalibrationDialog';
 import { PairingQrDialog } from '../components/modals/PairingQrDialog';
 import { DigitalPhoropterConsole } from '../components/phoropter/DigitalPhoropterConsole';
+import { MiniPatientPreview } from '../components/preview/MiniPatientPreview';
 
 const SettingsIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg
@@ -85,6 +86,16 @@ const TEST_DECK_MODES: Array<{ id: ClinicalTestCategory; code: string; label: st
   { id: 'near_vision', code: '08', label: 'NEAR VISION' },
 ];
 
+const NEAR_READING_TIERS = [
+  { tier: 'N4', jaeger: 'J1+', logMar: 0.0, snellenEquiv: '20/20' },
+  { tier: 'N5', jaeger: 'J2', logMar: 0.1, snellenEquiv: '20/25' },
+  { tier: 'N6', jaeger: 'J3', logMar: 0.2, snellenEquiv: '20/32' },
+  { tier: 'N8', jaeger: 'J5', logMar: 0.3, snellenEquiv: '20/40' },
+  { tier: 'N10', jaeger: 'J7', logMar: 0.4, snellenEquiv: '20/50' },
+  { tier: 'N14', jaeger: 'J10', logMar: 0.6, snellenEquiv: '20/80' },
+  { tier: 'N18', jaeger: 'J14', logMar: 0.8, snellenEquiv: '20/125' },
+];
+
 export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
   state,
   updateState,
@@ -97,8 +108,33 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
 }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isQrOpen, setIsQrOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(true);
 
   useClinicalHotkeys({ state, updateState, randomizeOptotypes });
+
+  // P hotkey toggles the floating patient preview
+  useEffect(() => {
+    const handlePreviewHotkey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.closest('dialog[open]'))
+      ) {
+        return;
+      }
+
+      if ((e.key === 'p' || e.key === 'P') && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        setIsPreviewOpen((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handlePreviewHotkey);
+    return () => window.removeEventListener('keydown', handlePreviewHotkey);
+  }, []);
 
   const activeLogMAR =
     state.activeCategory === 'etdrs_wizard'
@@ -179,9 +215,6 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
         let nextPhase = prev.etdrsWizard.phase;
         let nextSeed = prev.randomSeed;
 
-        // Automated Staircase Rule once all 5 letters on the line are graded:
-        // >= 3/5 correct -> automatically descend 0.1 LogMAR to smaller line;
-        // < 3/5 correct -> stopping rule reached ('completed').
         if (currentLineTested === 5) {
           if (currentLineCorrect >= 3 && curLog > -0.3) {
             nextLogMAR = Number((curLog - 0.1).toFixed(1));
@@ -220,7 +253,6 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
     });
   };
 
-  // Mark all 5 correct on active line (auto-advances in eETDRS mode)
   const handleMarkAllCorrect = () => {
     if (state.activeCategory === 'etdrs_wizard') {
       updateState((prev) => {
@@ -263,6 +295,13 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
   };
 
   const d15Analysis = analyzeD15Arrangement(state.d15ArrangedCaps || [0]);
+
+  // Determine which primary selector/ladder should be active in the Left Bay
+  const isAcuityLadderApplicable =
+    state.activeCategory === 'va_chart' ||
+    state.activeCategory === 'etdrs_wizard' ||
+    state.activeCategory === 'duochrome_balance' ||
+    (state.activeCategory === 'contrast_wizard' && state.contrastWizard.mode === 'letter_contrast');
 
   return (
     <div className="min-h-dvh w-full bg-[#08090C] text-[#E2E8F0] flex flex-col select-none font-sans">
@@ -364,6 +403,25 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
             {state.isBlackout ? '● BLK ON' : 'BLK'}
           </button>
 
+          {/* Floating Patient Preview Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setIsPreviewOpen((prev) => !prev)}
+            className={`px-2.5 py-1.5 border uppercase cursor-pointer flex items-center gap-1.5 font-bold transition ${
+              isPreviewOpen
+                ? 'bg-[#10241B] text-emerald-300 border-emerald-500/80 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
+                : 'bg-[#13161F] text-neutral-400 border-[#262B38] hover:bg-[#1C202D] hover:text-white'
+            }`}
+            title="Toggle Mini Floating Patient Preview (Key: P)"
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isPreviewOpen ? 'bg-emerald-400 animate-pulse' : 'bg-neutral-500'
+              }`}
+            />
+            <span>PREVIEW [P]</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setIsQrOpen(true)}
@@ -394,85 +452,323 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
 
       {/* MAIN 3-BAY CLINICAL INSTRUMENT DECK */}
       <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 p-2 max-w-[1920px] w-full mx-auto">
-        {/* LEFT BAY (3 cols): ACUITY DRUM & STEPPER KEYPAD */}
+        {/* LEFT BAY (3 cols): ADAPTIVE TEST LADDER / PRIMARY SELECTOR */}
         <section className="lg:col-span-3 bg-[#0D0F14] border border-[#1E2330] flex flex-col p-2 gap-2">
-          <div className="flex items-center justify-between px-1 border-b border-[#1A1E29] pb-1.5 font-mono">
-            <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-              ACUITY DRUM ({state.doctorNotation.replace('_', ' ')})
-            </span>
-            <span className="text-xs font-bold text-amber-400">
-              {formatAcuityNotation(activeLogMAR, state.doctorNotation)}
-            </span>
-          </div>
+          {/* A. Acuity Drum (VA Chart, eETDRS, Duochrome, Letter Contrast) */}
+          {isAcuityLadderApplicable && (
+            <>
+              <div className="flex items-center justify-between px-1 border-b border-[#1A1E29] pb-1.5 font-mono">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                  ACUITY DRUM ({state.doctorNotation.replace('_', ' ')})
+                </span>
+                <span className="text-xs font-bold text-amber-400">
+                  {formatAcuityNotation(activeLogMAR, state.doctorNotation)}
+                </span>
+              </div>
 
-          <div className="grid grid-cols-2 gap-1.5 font-mono">
-            <button
-              type="button"
-              onClick={() => stepAcuitySize('larger')}
-              className="py-2.5 bg-[#151822] hover:bg-[#1E2330] active:bg-amber-500 active:text-black border border-[#282E3E] text-xs font-bold text-white uppercase tracking-wider cursor-pointer"
-            >
-              ▲ LARGER [↑]
-            </button>
-            <button
-              type="button"
-              onClick={() => stepAcuitySize('smaller')}
-              className="py-2.5 bg-[#151822] hover:bg-[#1E2330] active:bg-amber-500 active:text-black border border-[#282E3E] text-xs font-bold text-white uppercase tracking-wider cursor-pointer"
-            >
-              ▼ SMALLER [↓]
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-1 flex-1 content-start font-mono">
-            {ACUITY_LADDER.map((spec) => {
-              const isSelected = Math.abs(spec.logMAR - activeLogMAR) < 0.01;
-              const is2020 = Math.abs(spec.logMAR - 0.0) < 0.01;
-              const primaryLabel = formatAcuityNotation(spec.logMAR, state.doctorNotation);
-              const logStr =
-                spec.logMAR >= 0 ? `+${spec.logMAR.toFixed(1)}` : spec.logMAR.toFixed(1);
-
-              return (
+              <div className="grid grid-cols-2 gap-1.5 font-mono">
                 <button
-                  key={spec.logMAR}
                   type="button"
-                  onClick={() => {
-                    if (state.activeCategory === 'etdrs_wizard') {
-                      updateState((prev) => ({
-                        ...prev,
-                        etdrsWizard: { ...prev.etdrsWizard, currentLogMAR: spec.logMAR },
-                      }));
-                    } else {
-                      updateState({
-                        activeLogMAR: spec.logMAR,
-                        currentLineScores: [
-                          'untested',
-                          'untested',
-                          'untested',
-                          'untested',
-                          'untested',
-                        ],
-                      });
-                    }
-                  }}
-                  className={`flex items-center justify-between px-2.5 py-2 border text-left transition cursor-pointer ${
-                    isSelected
-                      ? 'bg-amber-500 border-amber-400 text-black font-black'
-                      : is2020
-                      ? 'bg-[#101917] border-emerald-600/60 text-emerald-300 hover:bg-[#152320]'
-                      : 'bg-[#12151E] border-[#1F2432] text-neutral-200 hover:bg-[#1A1F2C]'
-                  }`}
+                  onClick={() => stepAcuitySize('larger')}
+                  className="py-2.5 bg-[#151822] hover:bg-[#1E2330] active:bg-amber-500 active:text-black border border-[#282E3E] text-xs font-bold text-white uppercase tracking-wider cursor-pointer"
                 >
-                  <span className="text-xs font-bold tracking-tight">{primaryLabel}</span>
-                  <span
-                    className={`text-[10px] ${
-                      isSelected ? 'text-black/80 font-bold' : 'text-neutral-500'
-                    }`}
-                  >
-                    {state.doctorNotation === 'logmar' ? spec.snellenUS : logStr}
-                  </span>
+                  ▲ LARGER [↑]
                 </button>
-              );
-            })}
-          </div>
+                <button
+                  type="button"
+                  onClick={() => stepAcuitySize('smaller')}
+                  className="py-2.5 bg-[#151822] hover:bg-[#1E2330] active:bg-amber-500 active:text-black border border-[#282E3E] text-xs font-bold text-white uppercase tracking-wider cursor-pointer"
+                >
+                  ▼ SMALLER [↓]
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1 flex-1 content-start font-mono">
+                {ACUITY_LADDER.map((spec) => {
+                  const isSelected = Math.abs(spec.logMAR - activeLogMAR) < 0.01;
+                  const is2020 = Math.abs(spec.logMAR - 0.0) < 0.01;
+                  const primaryLabel = formatAcuityNotation(spec.logMAR, state.doctorNotation);
+                  const logStr =
+                    spec.logMAR >= 0 ? `+${spec.logMAR.toFixed(1)}` : spec.logMAR.toFixed(1);
+
+                  return (
+                    <button
+                      key={spec.logMAR}
+                      type="button"
+                      onClick={() => {
+                        if (state.activeCategory === 'etdrs_wizard') {
+                          updateState((prev) => ({
+                            ...prev,
+                            etdrsWizard: { ...prev.etdrsWizard, currentLogMAR: spec.logMAR },
+                          }));
+                        } else {
+                          updateState({
+                            activeLogMAR: spec.logMAR,
+                            currentLineScores: [
+                              'untested',
+                              'untested',
+                              'untested',
+                              'untested',
+                              'untested',
+                            ],
+                          });
+                        }
+                      }}
+                      className={`flex items-center justify-between px-2.5 py-2 border text-left transition cursor-pointer ${
+                        isSelected
+                          ? 'bg-amber-500 border-amber-400 text-black font-black'
+                          : is2020
+                          ? 'bg-[#101917] border-emerald-600/60 text-emerald-300 hover:bg-[#152320]'
+                          : 'bg-[#12151E] border-[#1F2432] text-neutral-200 hover:bg-[#1A1F2C]'
+                      }`}
+                    >
+                      <span className="text-xs font-bold tracking-tight">{primaryLabel}</span>
+                      <span
+                        className={`text-[10px] ${
+                          isSelected ? 'text-black/80 font-bold' : 'text-neutral-500'
+                        }`}
+                      >
+                        {state.doctorNotation === 'logmar' ? spec.snellenUS : logStr}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* B. Astigmatism Cylinder Axis Stepper Deck (when in Astigmatism Mode) */}
+          {state.activeCategory === 'astigmatism' && (
+            <div className="flex flex-col gap-2 font-mono h-full">
+              <div className="flex items-center justify-between px-1 border-b border-[#1A1E29] pb-1.5">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                  CYLINDER AXIS
+                </span>
+                <span className="text-sm font-bold text-amber-400">
+                  {state.astigmatismAxisDeg}°
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateState((prev) => ({
+                      ...prev,
+                      astigmatismAxisDeg: (prev.astigmatismAxisDeg + 5) % 181,
+                    }))
+                  }
+                  className="py-2.5 bg-[#151822] hover:bg-[#1E2330] border border-[#282E3E] text-xs font-bold text-white uppercase cursor-pointer"
+                >
+                  ▲ +5° AXIS [↑]
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateState((prev) => ({
+                      ...prev,
+                      astigmatismAxisDeg: Math.max(0, prev.astigmatismAxisDeg - 5),
+                    }))
+                  }
+                  className="py-2.5 bg-[#151822] hover:bg-[#1E2330] border border-[#282E3E] text-xs font-bold text-white uppercase cursor-pointer"
+                >
+                  ▼ -5° AXIS [↓]
+                </button>
+              </div>
+
+              <div className="text-[10px] uppercase tracking-wider text-neutral-400 px-1 pt-1">
+                RAPID AXIS PRESETS
+              </div>
+              <div className="grid grid-cols-2 gap-1 flex-1 content-start">
+                {[180, 165, 150, 135, 120, 105, 90, 75, 60, 45, 30, 15, 0].map((deg) => {
+                  const isSelected = state.astigmatismAxisDeg === deg;
+                  return (
+                    <button
+                      key={deg}
+                      type="button"
+                      onClick={() => updateState({ astigmatismAxisDeg: deg })}
+                      className={`py-2 px-2.5 border text-center font-bold text-xs cursor-pointer transition ${
+                        isSelected
+                          ? 'bg-amber-500 text-black border-amber-400'
+                          : 'bg-[#12151E] border-[#1F2432] text-neutral-300 hover:bg-[#1A1F2C]'
+                      }`}
+                    >
+                      {deg}°
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* C. Binocular Test Target Selector (when in Binocular Mode) */}
+          {state.activeCategory === 'binocular' && (
+            <div className="flex flex-col gap-2 font-mono h-full">
+              <div className="flex items-center justify-between px-1 border-b border-[#1A1E29] pb-1.5">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                  BINOCULAR TARGET
+                </span>
+                <span className="text-xs font-bold text-amber-400">
+                  {state.binocularMode.replace('_', ' ').toUpperCase()}
+                </span>
+              </div>
+
+              <div className="space-y-1.5 flex-1 content-start">
+                {(
+                  [
+                    { id: 'worth_4_dot', label: 'WORTH 4-DOT (FUSION)', code: 'W4D' },
+                    { id: 'schober', label: 'SCHOBER RINGS (HETERO)', code: 'SCH' },
+                    { id: 'fixation_disparity', label: 'OXO NONIUS (DISPARITY)', code: 'OXO' },
+                    { id: 'binocular_balance', label: 'OD/OS BALANCE (PRISM)', code: 'BAL' },
+                  ] as Array<{ id: BinocularMode; label: string; code: string }>
+                ).map((bm) => {
+                  const isSelected = state.binocularMode === bm.id;
+                  return (
+                    <button
+                      key={bm.id}
+                      type="button"
+                      onClick={() => updateState({ binocularMode: bm.id })}
+                      className={`w-full py-3 px-3 text-left border flex items-center justify-between cursor-pointer transition ${
+                        isSelected
+                          ? 'bg-amber-500 text-black border-amber-400 font-bold'
+                          : 'bg-[#12151E] border-[#1F2432] text-neutral-300 hover:bg-[#1A1F2C]'
+                      }`}
+                    >
+                      <span className="text-xs">{bm.label}</span>
+                      <span className="text-[10px] opacity-75">{bm.code}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* D. Macular & Color Target Selector (when in Macular/Color Mode) */}
+          {state.activeCategory === 'macular_color' && (
+            <div className="flex flex-col gap-2 font-mono h-full">
+              <div className="flex items-center justify-between px-1 border-b border-[#1A1E29] pb-1.5">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                  COLOR & MACULAR TARGET
+                </span>
+                <span className="text-xs font-bold text-amber-400">
+                  {state.macularColorMode.replace('_', ' ').toUpperCase()}
+                </span>
+              </div>
+
+              <div className="space-y-1.5 flex-1 content-start">
+                {(
+                  [
+                    { id: 'amsler_standard', label: 'AMSLER WHITE ON BLACK' },
+                    { id: 'amsler_inverted', label: 'AMSLER BLACK ON WHITE' },
+                    { id: 'amsler_red', label: 'AMSLER RED ON BLACK' },
+                    { id: 'amsler_diagonal', label: 'CENTRAL SCOTOMA (X)' },
+                    { id: 'color_ishihara', label: 'ISHIHARA PSEUDO-ISOCHROMATIC' },
+                    { id: 'color_d15', label: 'FARNSWORTH D-15 HUE' },
+                  ] as Array<{ id: MacularColorMode; label: string }>
+                ).map((mc) => {
+                  const isSelected = state.macularColorMode === mc.id;
+                  return (
+                    <button
+                      key={mc.id}
+                      type="button"
+                      onClick={() => updateState({ macularColorMode: mc.id })}
+                      className={`w-full py-2.5 px-3 text-left border text-xs cursor-pointer transition ${
+                        isSelected
+                          ? 'bg-amber-500 text-black border-amber-400 font-bold'
+                          : 'bg-[#12151E] border-[#1F2432] text-neutral-300 hover:bg-[#1A1F2C]'
+                      }`}
+                    >
+                      {mc.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* E. 40cm Presbyopia Reading Tier Ladder (when in Near Vision Mode) */}
+          {state.activeCategory === 'near_vision' && (
+            <div className="flex flex-col gap-2 font-mono h-full">
+              <div className="flex items-center justify-between px-1 border-b border-[#1A1E29] pb-1.5">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                  40CM READING TIER
+                </span>
+                <span className="text-xs font-bold text-amber-400">
+                  N-POINT / JAEGER
+                </span>
+              </div>
+
+              <div className="space-y-1.5 flex-1 content-start">
+                {NEAR_READING_TIERS.map((tier) => {
+                  const isSelected = Math.abs(tier.logMar - activeLogMAR) < 0.05;
+                  return (
+                    <button
+                      key={tier.tier}
+                      type="button"
+                      onClick={() => updateState({ activeLogMAR: tier.logMar })}
+                      className={`w-full py-2.5 px-3 border flex items-center justify-between cursor-pointer transition ${
+                        isSelected
+                          ? 'bg-amber-500 text-black border-amber-400 font-bold'
+                          : 'bg-[#12151E] border-[#1F2432] text-neutral-300 hover:bg-[#1A1F2C]'
+                      }`}
+                    >
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-sm font-bold">{tier.tier}</span>
+                        <span className="text-[11px] opacity-80">({tier.jaeger})</span>
+                      </div>
+                      <span className="text-[10px] opacity-75">{tier.snellenEquiv}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* F. Sine Grating CPD Spatial Frequency Ladder (when in Contrast Sine Grating Mode) */}
+          {state.activeCategory === 'contrast_wizard' &&
+            state.contrastWizard.mode === 'sine_grating' && (
+              <div className="flex flex-col gap-2 font-mono h-full">
+                <div className="flex items-center justify-between px-1 border-b border-[#1A1E29] pb-1.5">
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                    SPATIAL FREQUENCY
+                  </span>
+                  <span className="text-xs font-bold text-emerald-400">
+                    {state.contrastWizard.spatialFrequencyCpd} CPD
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 flex-1 content-start">
+                  {[1.5, 3, 6, 12, 18].map((cpd) => {
+                    const isSelected = state.contrastWizard.spatialFrequencyCpd === cpd;
+                    return (
+                      <button
+                        key={cpd}
+                        type="button"
+                        onClick={() =>
+                          updateState((prev) => ({
+                            ...prev,
+                            contrastWizard: {
+                              ...prev.contrastWizard,
+                              spatialFrequencyCpd: cpd,
+                            },
+                          }))
+                        }
+                        className={`w-full py-2.5 px-3 border flex items-center justify-between cursor-pointer transition ${
+                          isSelected
+                            ? 'bg-emerald-500 text-black border-emerald-400 font-bold'
+                            : 'bg-[#12151E] border-[#1F2432] text-neutral-300 hover:bg-[#1A1F2C]'
+                        }`}
+                      >
+                        <span className="text-sm font-bold">{cpd} CPD</span>
+                        <span className="text-[10px] opacity-75">
+                          {cpd <= 3 ? 'LOW FREQ' : cpd <= 6 ? 'MID FREQ' : 'HIGH FREQ'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
         </section>
 
         {/* CENTER BAY (5 cols): DIGITAL PHOROPTER LCD, OPTICAL VIEWPORT & SCORING DECK */}
@@ -497,7 +793,7 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                   ? `${state.optotypeSet.toUpperCase()} • ${state.isolationMode.toUpperCase()}`
                   : state.activeCategory.replace('_', ' ').toUpperCase()}
               </span>
-              {state.crowdingMode !== 'none' && (
+              {state.crowdingMode !== 'none' && state.activeCategory === 'va_chart' && (
                 <span className="px-2 py-0.5 bg-emerald-950/80 border border-emerald-600/50 text-emerald-300">
                   CROWD {state.crowdingMode.replace('bars_', '')}
                 </span>
@@ -513,7 +809,7 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
             </div>
           </div>
 
-          {/* Live Optical Viewport (Un-Mirrored Clinician Preview) */}
+          {/* Live Optical Viewport (Un-Mirrored Clinician Stage) */}
           <div className="bg-[#0D0F14] border border-[#1E2330] p-2 flex-1 flex flex-col justify-center">
             <div
               className="relative w-full mx-auto overflow-hidden border border-[#2A3042] bg-black"
@@ -533,109 +829,7 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
             </div>
           </div>
 
-          {/* AUTOMATED eETDRS STAIRCASE TELEMETRY STRIP */}
-          {state.activeCategory === 'etdrs_wizard' && (
-            <div className="bg-[#0D0F14] border border-[#1E2330] px-3 py-2 flex flex-wrap items-center justify-between gap-2 font-mono text-xs">
-              <div className="flex items-center gap-2">
-                <div className="flex border border-[#282E3E]">
-                  {(['OD', 'OS', 'OU'] as const).map((eye) => (
-                    <button
-                      key={eye}
-                      type="button"
-                      onClick={() =>
-                        updateState((prev) => ({
-                          ...prev,
-                          etdrsWizard: { ...prev.etdrsWizard, testedEye: eye },
-                        }))
-                      }
-                      className={`px-2 py-0.5 text-[10px] font-bold cursor-pointer ${
-                        state.etdrsWizard.testedEye === eye
-                          ? 'bg-amber-500 text-black'
-                          : 'bg-[#131720] text-neutral-400'
-                      }`}
-                    >
-                      {eye}
-                    </button>
-                  ))}
-                </div>
-                <span
-                  className={`px-2 py-0.5 text-[10px] font-bold uppercase border ${
-                    state.etdrsWizard.phase === 'completed'
-                      ? 'bg-emerald-950/90 border-emerald-500 text-emerald-300'
-                      : 'bg-[#141822] border-[#282E3E] text-amber-400'
-                  }`}
-                >
-                  {state.etdrsWizard.phase === 'completed'
-                    ? '● ENDPOINT LOCKED (<3/5 OR MIN)'
-                    : 'STAIRCASE AUTO-DESCENT (≥3/5)'}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <span className="text-[11px] text-neutral-300">
-                  FINAL LOGMAR:{' '}
-                  <strong className="text-emerald-400">
-                    {state.etdrsWizard.finalLogMAR !== null
-                      ? state.etdrsWizard.finalLogMAR.toFixed(2)
-                      : '—'}
-                  </strong>
-                </span>
-                <span className="text-[11px] text-neutral-300">
-                  ETDRS LETTERS:{' '}
-                  <strong className="text-amber-400">
-                    {state.etdrsWizard.totalLetterScore !== null
-                      ? `${state.etdrsWizard.totalLetterScore}/100`
-                      : '—'}
-                  </strong>
-                </span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateState((prev) => ({
-                      ...prev,
-                      randomSeed: prev.randomSeed + 1,
-                      etdrsWizard: {
-                        phase: 'threshold',
-                        currentLogMAR: 0.4,
-                        lineScores: {},
-                        finalLogMAR: null,
-                        totalLetterScore: null,
-                        testedEye: prev.etdrsWizard.testedEye,
-                      },
-                    }))
-                  }
-                  className="px-2 py-0.5 bg-[#171C28] hover:bg-[#22293A] border border-[#2C3347] text-[10px] text-neutral-300 uppercase cursor-pointer"
-                >
-                  RESTART
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* DIGITAL PHOROPTER REFRACTION CONSOLE */}
-          <DigitalPhoropterConsole
-            state={state}
-            updateState={updateState}
-            className="rounded border border-[#1E2330]"
-          />
-
-          {/* NEAR VISION CONTROL DECK */}
-          {state.activeCategory === 'near_vision' && (
-            <div className="bg-[#0D0F14] border border-[#1E2330] p-3 space-y-2 font-mono text-xs">
-              <div className="flex items-center justify-between text-neutral-400 text-[10px] uppercase tracking-wider">
-                <span>PRESBYOPIA 40CM READING CARD (N4–N18)</span>
-                <span className="text-amber-400 font-bold">40 CM / +2.50 D DEMAND</span>
-              </div>
-              <div className="flex items-center justify-between bg-[#08090C] border border-[#1E2330] p-2">
-                <span className="text-slate-400">ADD POWER:</span>
-                <span className="font-bold text-amber-400">
-                  OD +{(state.refraction?.od?.add ?? 0).toFixed(2)} D / OS +{(state.refraction?.os?.add ?? 0).toFixed(2)} D
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Bottom Center Deck: Target Answer Keystrip OR Module Control Deck */}
+          {/* Target Answer Keystrip & Scoring (VA Chart & eETDRS only) */}
           {(state.activeCategory === 'va_chart' ||
             state.activeCategory === 'etdrs_wizard') && (
             <div className="bg-[#0D0F14] border border-[#1E2330] p-2.5 space-y-2 font-mono">
@@ -748,22 +942,435 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
             </div>
           )}
 
-          {/* ASTIGMATISM CONTROL DECK */}
+          {/* DIGITAL PHOROPTER REFRACTION CONSOLE */}
+          <DigitalPhoropterConsole
+            state={state}
+            updateState={updateState}
+            className="rounded border border-[#1E2330]"
+          />
+        </section>
+
+        {/* RIGHT BAY (4 cols): CONTEXT-SENSITIVE SELECTORS & CONTROLS */}
+        <section className="lg:col-span-4 flex flex-col gap-2 font-mono">
+          {/* ========================================================================= */}
+          {/* 1. VA CHART MODE: OPTOTYPE SELECTOR, APERTURE, CROWDING, FILTERS, MACROS  */}
+          {/* ========================================================================= */}
+          {state.activeCategory === 'va_chart' && (
+            <>
+              {/* Optotype Selector */}
+              <div className="bg-[#0D0F14] border border-[#1E2330] p-2.5 space-y-2">
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400 border-b border-[#1A1E29] pb-1">
+                  <span>OPTOTYPE SELECTOR</span>
+                  <span className="text-amber-400 font-bold">{state.optotypeSet.toUpperCase()}</span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-1.5">
+                  {OPTOTYPE_KEYS.map((k) => {
+                    const isSelected = state.optotypeSet === k.id;
+                    return (
+                      <button
+                        key={k.id}
+                        type="button"
+                        onClick={() =>
+                          updateState({
+                            optotypeSet: k.id,
+                            activeLetterIndex: 0,
+                            currentLineScores: [
+                              'untested',
+                              'untested',
+                              'untested',
+                              'untested',
+                              'untested',
+                            ],
+                          })
+                        }
+                        className={`flex flex-col items-center justify-center py-2.5 px-1 border transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#1B2130] border-amber-500 border-t-2 border-t-amber-400 text-white'
+                            : 'bg-[#12151E] border-[#212634] text-neutral-400 hover:text-white hover:bg-[#171B26]'
+                        }`}
+                      >
+                        <div className="h-6 flex items-center justify-center mb-1.5">
+                          <OptotypeSvg
+                            symbol={k.sample}
+                            sizePx={20}
+                            color={isSelected ? '#F59E0B' : '#CBD5E1'}
+                          />
+                        </div>
+                        <span className="text-[10px] font-bold tracking-wider uppercase">
+                          {k.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Dyop Spin Controls if Dyop Set Active */}
+                {state.optotypeSet === 'dyop' && (
+                  <div className="pt-2 border-t border-[#1A1E29] flex items-center justify-between gap-2 text-[10px]">
+                    <div className="flex border border-[#252B3B]">
+                      <button
+                        type="button"
+                        onClick={() => updateState({ dyopDirection: 'cw' })}
+                        className={`px-2.5 py-1 font-bold uppercase cursor-pointer ${
+                          state.dyopDirection === 'cw'
+                            ? 'bg-amber-500 text-black'
+                            : 'bg-[#12151E] text-neutral-400'
+                        }`}
+                      >
+                        CW ↻
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateState({ dyopDirection: 'ccw' })}
+                        className={`px-2.5 py-1 font-bold uppercase cursor-pointer ${
+                          state.dyopDirection === 'ccw'
+                            ? 'bg-amber-500 text-black'
+                            : 'bg-[#12151E] text-neutral-400'
+                        }`}
+                      >
+                        CCW ↺
+                      </button>
+                    </div>
+
+                    <div className="flex gap-1">
+                      {[20, 40, 60].map((rpm) => (
+                        <button
+                          key={rpm}
+                          type="button"
+                          onClick={() => updateState({ dyopRpm: rpm })}
+                          className={`px-2 py-1 border font-bold cursor-pointer ${
+                            state.dyopRpm === rpm
+                              ? 'bg-emerald-500 text-black border-emerald-400'
+                              : 'bg-[#12151E] border-[#212634] text-neutral-400'
+                          }`}
+                        >
+                          {rpm} RPM
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Aperture & Isolation */}
+              <div className="bg-[#0D0F14] border border-[#1E2330] p-2.5 space-y-2">
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400 border-b border-[#1A1E29] pb-1">
+                  <span>APERTURE ISOLATION</span>
+                  <span>KEYS: F / L / V / S</span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-1.5">
+                  {(
+                    [
+                      { id: 'full', label: 'FULL [F]', glyph: '⣿⣿' },
+                      { id: 'line', label: 'H-LINE [L]', glyph: '══' },
+                      { id: 'column', label: 'V-COL [V]', glyph: '║' },
+                      { id: 'single', label: 'SINGLE [S]', glyph: '回' },
+                    ] as Array<{ id: ChartIsolationMode; label: string; glyph: string }>
+                  ).map((iso) => {
+                    const isSelected = state.isolationMode === iso.id;
+                    return (
+                      <button
+                        key={iso.id}
+                        type="button"
+                        onClick={() => updateState({ isolationMode: iso.id })}
+                        className={`flex flex-col items-center justify-center py-2 px-1 border transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#1B2130] border-amber-500 border-t-2 border-t-amber-400 text-white font-bold'
+                            : 'bg-[#12151E] border-[#212634] text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        <span className="text-sm leading-none mb-1 text-amber-400">
+                          {iso.glyph}
+                        </span>
+                        <span className="text-[10px]">{iso.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="pt-1">
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-400 mb-1">
+                    CONTOUR CROWDING BARS [KEY: C]
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {(
+                      [
+                        { id: 'none', label: 'OFF' },
+                        { id: 'bars_0.5x', label: '0.5× BARS' },
+                        { id: 'bars_1.0x', label: '1.0× BARS' },
+                        { id: 'box', label: 'FRAME BOX' },
+                      ] as Array<{ id: CrowdingMode; label: string }>
+                    ).map((cr) => (
+                      <button
+                        key={cr.id}
+                        type="button"
+                        onClick={() => updateState({ crowdingMode: cr.id })}
+                        className={`py-2 text-[10px] font-bold border uppercase cursor-pointer ${
+                          state.crowdingMode === cr.id
+                            ? 'bg-emerald-500 text-black border-emerald-400'
+                            : 'bg-[#12151E] border-[#212634] text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        {cr.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Optical Filters & Polarity */}
+              <div className="bg-[#0D0F14] border border-[#1E2330] p-2.5 space-y-2">
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400 border-b border-[#1A1E29] pb-1">
+                  <span>OPTICAL FILTERS & POLARITY</span>
+                  <span>KEYS: D / I</span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-1.5">
+                  {(
+                    [
+                      { id: 'none', label: 'CLEAR', dot: 'bg-neutral-400' },
+                      {
+                        id: 'split',
+                        label: 'R/G SPLIT',
+                        dot: 'bg-gradient-to-r from-red-500 to-green-500',
+                      },
+                      { id: 'red_only', label: 'RED 625', dot: 'bg-red-500' },
+                      { id: 'green_only', label: 'GRN 535', dot: 'bg-green-500' },
+                    ] as Array<{ id: DuochromeOverlay; label: string; dot: string }>
+                  ).map((dc) => (
+                    <button
+                      key={dc.id}
+                      type="button"
+                      onClick={() => updateState({ duochromeOverlay: dc.id })}
+                      className={`flex items-center justify-center gap-1.5 py-2 px-1 text-[10px] font-bold border uppercase cursor-pointer ${
+                        state.duochromeOverlay === dc.id
+                          ? 'bg-[#1B2130] border-amber-500 text-white'
+                          : 'bg-[#12151E] border-[#212634] text-neutral-400 hover:text-white'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${dc.dot}`} />
+                      <span>{dc.label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => updateState({ invertPolarity: !state.invertPolarity })}
+                  className={`w-full py-2 text-[11px] font-bold border uppercase tracking-wider cursor-pointer ${
+                    state.invertPolarity
+                      ? 'bg-white text-black border-white'
+                      : 'bg-[#12151E] border-[#212634] text-neutral-300 hover:text-white'
+                  }`}
+                >
+                  {state.invertPolarity
+                    ? '■ INVERTED: WHITE ON BLACK [I]'
+                    : '□ STANDARD: BLACK ON WHITE [I]'}
+                </button>
+              </div>
+
+              {/* Sequence Macros */}
+              <div className="bg-[#0D0F14] border border-[#1E2330] p-2.5 space-y-2 flex-1 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400 border-b border-[#1A1E29] pb-1 mb-2">
+                    <span>EXAM SEQUENCE MACROS</span>
+                    <button
+                      type="button"
+                      onClick={resetSession}
+                      className="text-neutral-400 hover:text-amber-400 uppercase cursor-pointer"
+                    >
+                      [RESET]
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {WORKFLOW_PRESETS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() =>
+                          updateState((prev) => ({
+                            ...prev,
+                            ...preset.patch,
+                            currentLineScores: [
+                              'untested',
+                              'untested',
+                              'untested',
+                              'untested',
+                              'untested',
+                            ],
+                          }))
+                        }
+                        className="py-2 px-2.5 bg-[#12151E] hover:bg-[#1B202E] active:bg-amber-500 active:text-black border border-[#212634] text-left text-[11px] font-bold text-neutral-200 uppercase truncate cursor-pointer"
+                      >
+                        {preset.badge}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-neutral-500 border-t border-[#1A1E29] pt-1.5 flex items-center justify-between">
+                  <span>←/→ TEST MODE • ↑/↓ SIZE • SPACE SHUFFLE</span>
+                  <span>[ / ] TARGET</span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ========================================================================= */}
+          {/* 2. DUOCHROME BALANCE MODE: RAM-GAP PROTOCOL & SPHERICAL STEPPERS           */}
+          {/* ========================================================================= */}
+          {state.activeCategory === 'duochrome_balance' && (
+            <div className="bg-[#0D0F14] border border-[#1E2330] p-3 space-y-3 flex-1 flex flex-col font-mono">
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400 border-b border-[#1A1E29] pb-1.5">
+                <span>DUOCHROME REFRACTION BALANCE</span>
+                <span className="text-amber-400 font-bold">RAM-GAP PROTOCOL</span>
+              </div>
+
+              <div className="bg-[#07090D] border border-amber-500/30 p-2.5 rounded text-xs space-y-1">
+                <div className="font-bold text-amber-400 text-[11px] tracking-wide">
+                  CLINICAL BALANCE PRINCIPLE (RAM-GAP):
+                </div>
+                <div className="text-neutral-300 text-[11px] leading-relaxed">
+                  • <strong className="text-red-400">RED CLEARER?</strong> Patient is under-plused (myopic focus). <strong className="text-amber-300">ADD MINUS (-0.25 D)</strong>.
+                </div>
+                <div className="text-neutral-300 text-[11px] leading-relaxed">
+                  • <strong className="text-emerald-400">GREEN CLEARER?</strong> Patient is over-plused (hyperopic focus). <strong className="text-amber-300">ADD PLUS (+0.25 D)</strong>.
+                </div>
+                <div className="text-neutral-400 text-[10px] italic pt-0.5">
+                  Endpoint reached when letters on Red and Green appear equally sharp.
+                </div>
+              </div>
+
+              {/* 1-Click RAM-GAP Refraction Steppers */}
+              <div className="space-y-2 pt-1">
+                <div className="text-[10px] uppercase tracking-wider text-neutral-400">
+                  RAPID RAM-GAP SPHERICAL STEPS
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateState((prev) => ({
+                        ...prev,
+                        refraction: {
+                          ...prev.refraction,
+                          od: {
+                            ...prev.refraction.od,
+                            sphere: prev.refraction.od.sphere - 0.25,
+                          },
+                          os: {
+                            ...prev.refraction.os,
+                            sphere: prev.refraction.os.sphere - 0.25,
+                          },
+                        },
+                      }))
+                    }
+                    className="py-3 bg-[#241215] hover:bg-[#34181D] border border-red-500/60 text-red-300 font-bold text-xs uppercase cursor-pointer"
+                  >
+                    OU: ADD MINUS (-0.25 D)
+                    <div className="text-[9px] text-red-400/80 font-normal">RED CLEARER</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateState((prev) => ({
+                        ...prev,
+                        refraction: {
+                          ...prev.refraction,
+                          od: {
+                            ...prev.refraction.od,
+                            sphere: prev.refraction.od.sphere + 0.25,
+                          },
+                          os: {
+                            ...prev.refraction.os,
+                            sphere: prev.refraction.os.sphere + 0.25,
+                          },
+                        },
+                      }))
+                    }
+                    className="py-3 bg-[#10241A] hover:bg-[#163324] border border-emerald-500/60 text-emerald-300 font-bold text-xs uppercase cursor-pointer"
+                  >
+                    OU: ADD PLUS (+0.25 D)
+                    <div className="text-[9px] text-emerald-400/80 font-normal">GREEN CLEARER</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Filter Overlays */}
+              <div className="space-y-1.5 pt-2">
+                <div className="text-[10px] uppercase tracking-wider text-neutral-400">
+                  FILTER PRESENTATION
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(
+                    [
+                      { id: 'split', label: 'SPLIT R/G' },
+                      { id: 'red_only', label: 'RED ONLY (630nm)' },
+                      { id: 'green_only', label: 'GRN ONLY (530nm)' },
+                    ] as Array<{ id: DuochromeOverlay; label: string }>
+                  ).map((dc) => (
+                    <button
+                      key={dc.id}
+                      type="button"
+                      onClick={() => updateState({ duochromeOverlay: dc.id })}
+                      className={`py-2 px-1 text-[10px] font-bold border uppercase cursor-pointer ${
+                        state.duochromeOverlay === dc.id
+                          ? 'bg-[#1B2130] border-amber-500 text-white font-bold'
+                          : 'bg-[#12151E] border-[#212634] text-neutral-400 hover:text-white'
+                      }`}
+                    >
+                      {dc.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => updateState({ invertPolarity: !state.invertPolarity })}
+                  className={`w-full py-2 text-[11px] font-bold border uppercase tracking-wider cursor-pointer ${
+                    state.invertPolarity
+                      ? 'bg-white text-black border-white'
+                      : 'bg-[#12151E] border-[#212634] text-neutral-300 hover:text-white'
+                  }`}
+                >
+                  {state.invertPolarity
+                    ? '■ INVERTED: WHITE ON BLACK [I]'
+                    : '□ STANDARD: BLACK ON WHITE [I]'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* 3. ASTIGMATISM MODE: CLOCK DIAL, FAN, JCC HONEYCOMB, AXIS & FLIP CONTROLS */}
+          {/* ========================================================================= */}
           {state.activeCategory === 'astigmatism' && (
-            <div className="bg-[#0D0F14] border border-[#1E2330] p-3 space-y-2.5 font-mono">
+            <div className="bg-[#0D0F14] border border-[#1E2330] p-3 space-y-3 flex-1 flex flex-col font-mono">
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400 border-b border-[#1A1E29] pb-1.5">
+                <span>ASTIGMATISM & JCC DIAL</span>
+                <span className="text-amber-400 font-bold">{state.astigmatismMode.replace('_', ' ').toUpperCase()}</span>
+              </div>
+
+              {/* Mode Selector */}
               <div className="grid grid-cols-3 gap-1.5">
                 {(
                   [
-                    { id: 'clock_dial', label: '12-HR CLOCK DIAL' },
-                    { id: 'sunburst', label: '180° FAN & POINTER' },
-                    { id: 'jcc_dots', label: 'JCC HONEYCOMB DOTS' },
+                    { id: 'clock_dial', label: '12-HR CLOCK' },
+                    { id: 'sunburst', label: '180° FAN' },
+                    { id: 'jcc_dots', label: 'JCC HONEYCOMB' },
                   ] as Array<{ id: AstigmatismMode; label: string }>
                 ).map((m) => (
                   <button
                     key={m.id}
                     type="button"
                     onClick={() => updateState({ astigmatismMode: m.id })}
-                    className={`py-2 text-[11px] font-bold border uppercase cursor-pointer ${
+                    className={`py-2.5 text-[11px] font-bold border uppercase cursor-pointer transition ${
                       state.astigmatismMode === m.id
                         ? 'bg-amber-500 text-black border-amber-400'
                         : 'bg-[#131720] border-[#252B3B] text-neutral-300 hover:text-white'
@@ -774,35 +1381,102 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                 ))}
               </div>
 
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-neutral-400">CYLINDER AXIS:</span>
-                <span className="text-amber-400 font-bold">
-                  {state.astigmatismAxisDeg}°
-                </span>
-              </div>
-              <div className="grid grid-cols-9 gap-1">
-                {[0, 30, 45, 60, 90, 120, 135, 150, 180].map((deg) => (
+              {/* Jackson Cross-Cylinder (JCC) Refinement Panel */}
+              <div className="bg-[#08090C] border border-[#1E2330] p-2.5 space-y-2">
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-neutral-400">
+                  <span>JACKSON CROSS-CYLINDER (JCC)</span>
+                  <span className="text-amber-400 font-bold">KEY: J</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
                   <button
-                    key={deg}
                     type="button"
-                    onClick={() => updateState({ astigmatismAxisDeg: deg })}
-                    className={`py-1.5 text-[11px] border cursor-pointer ${
-                      state.astigmatismAxisDeg === deg
-                        ? 'bg-amber-500 text-black border-amber-400 font-bold'
-                        : 'bg-[#131720] border-[#252B3B] text-neutral-300'
-                    }`}
+                    onClick={() =>
+                      updateState((prev) => ({
+                        ...prev,
+                        jcc: {
+                          ...prev.jcc,
+                          flipPosition: prev.jcc?.flipPosition === 1 ? 2 : 1,
+                        },
+                      }))
+                    }
+                    className="py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs uppercase cursor-pointer"
                   >
-                    {deg}°
+                    FLIP JCC (POS {state.jcc?.flipPosition ?? 1})
                   </button>
-                ))}
+
+                  <div className="flex border border-[#252B3B]">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateState((prev) => ({
+                          ...prev,
+                          jcc: { ...prev.jcc, powerStep: 0.25 },
+                        }))
+                      }
+                      className={`flex-1 py-1.5 text-xs font-bold cursor-pointer ${
+                        state.jcc?.powerStep === 0.25
+                          ? 'bg-emerald-500 text-black'
+                          : 'bg-[#131720] text-neutral-400'
+                      }`}
+                    >
+                      ±0.25 D
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateState((prev) => ({
+                          ...prev,
+                          jcc: { ...prev.jcc, powerStep: 0.5 },
+                        }))
+                      }
+                      className={`flex-1 py-1.5 text-xs font-bold cursor-pointer ${
+                        state.jcc?.powerStep === 0.5
+                          ? 'bg-emerald-500 text-black'
+                          : 'bg-[#131720] text-neutral-400'
+                      }`}
+                    >
+                      ±0.50 D
+                    </button>
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-neutral-400 leading-relaxed bg-[#0F121A] p-2 border border-[#1E2330]">
+                  • <strong>AXIS REFINEMENT</strong>: Align handle with principal axis. Patient chooses sharper flip. Rotate axis toward red dots ("Chase the Red").
+                  <br />
+                  • <strong>POWER REFINEMENT</strong>: Align dots with principal axis. Red sharper = add -0.50D cyl & +0.25D sph (maintaining SE).
+                </div>
               </div>
+
+              {/* Polarity Invert Toggle */}
+              <button
+                type="button"
+                onClick={() => updateState({ invertPolarity: !state.invertPolarity })}
+                className={`w-full py-2 text-[11px] font-bold border uppercase tracking-wider cursor-pointer ${
+                  state.invertPolarity
+                    ? 'bg-white text-black border-white'
+                    : 'bg-[#12151E] border-[#212634] text-neutral-300 hover:text-white'
+                }`}
+              >
+                {state.invertPolarity
+                  ? '■ INVERTED: WHITE ON BLACK [I]'
+                  : '□ STANDARD: BLACK ON WHITE [I]'}
+              </button>
             </div>
           )}
 
-          {/* BINOCULAR & WORTH 4-DOT DECK */}
+          {/* ========================================================================= */}
+          {/* 4. BINOCULAR MODE: WORTH 4-DOT, SCHOBER, OXO, OD/OS BALANCE SELECTORS      */}
+          {/* ========================================================================= */}
           {state.activeCategory === 'binocular' && (
-            <div className="bg-[#0D0F14] border border-[#1E2330] p-3 space-y-2.5 font-mono">
-              <div className="grid grid-cols-4 gap-1.5">
+            <div className="bg-[#0D0F14] border border-[#1E2330] p-3 space-y-3 flex-1 flex flex-col font-mono">
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400 border-b border-[#1A1E29] pb-1.5">
+                <span>BINOCULAR VISION SELECTOR</span>
+                <span className="text-amber-400 font-bold">{state.binocularMode.replace('_', ' ').toUpperCase()}</span>
+              </div>
+
+              {/* Mode Selector */}
+              <div className="grid grid-cols-2 gap-1.5">
                 {(
                   [
                     { id: 'worth_4_dot', label: 'WORTH 4-DOT' },
@@ -815,9 +1489,9 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                     key={bm.id}
                     type="button"
                     onClick={() => updateState({ binocularMode: bm.id })}
-                    className={`py-2 text-[10px] font-bold border uppercase cursor-pointer ${
+                    className={`py-2.5 text-[11px] font-bold border uppercase cursor-pointer ${
                       state.binocularMode === bm.id
-                        ? 'bg-amber-500 text-black border-amber-400'
+                        ? 'bg-amber-500 text-black border-amber-400 font-bold'
                         : 'bg-[#131720] border-[#252B3B] text-neutral-300 hover:text-white'
                     }`}
                   >
@@ -826,24 +1500,26 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                 ))}
               </div>
 
+              {/* Worth 4-Dot Specific Controls */}
               {state.binocularMode === 'worth_4_dot' && (
-                <div className="flex items-center justify-between gap-2 text-[11px] bg-[#090B0E] p-2 border border-[#1E2330]">
-                  <span className="text-neutral-400">
-                    4=FUSION | 2 RED=OS SUPP | 3 GRN=OD SUPP | 5=DIPLOPIA
-                  </span>
-                  <div className="flex gap-1 shrink-0">
+                <div className="space-y-2 bg-[#08090C] border border-[#1E2330] p-2.5">
+                  <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-neutral-400">
+                    <span>DOT ANGULAR SPREAD</span>
+                    <span className="text-amber-400 font-bold">{state.worthDotSpread}° DEMAND</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
                     {[
-                      { label: '2°', val: 0.7 },
-                      { label: '4°', val: 1.0 },
-                      { label: '6°', val: 1.6 },
+                      { label: '2° (MACULAR)', val: 0.7 },
+                      { label: '4° (PARAMACULAR)', val: 1.0 },
+                      { label: '6° (PERIPHERAL)', val: 1.6 },
                     ].map((sp) => (
                       <button
                         key={sp.label}
                         type="button"
                         onClick={() => updateState({ worthDotSpread: sp.val })}
-                        className={`px-2 py-0.5 border cursor-pointer ${
+                        className={`py-2 text-[10px] border font-bold cursor-pointer ${
                           Math.abs(state.worthDotSpread - sp.val) < 0.1
-                            ? 'bg-amber-500 text-black border-amber-400 font-bold'
+                            ? 'bg-amber-500 text-black border-amber-400'
                             : 'bg-[#131720] border-[#252B3B] text-neutral-400'
                         }`}
                       >
@@ -851,104 +1527,206 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                       </button>
                     ))}
                   </div>
+
+                  <div className="text-[10px] text-neutral-300 bg-[#0F121A] p-2 border border-[#1E2330] space-y-1">
+                    <div className="font-bold text-amber-400 uppercase text-[9px]">CLINICAL INTERPRETATION:</div>
+                    <div>• <strong>4 DOTS:</strong> Normal fusion (1 red top, 2 green side, 1 white bottom)</div>
+                    <div>• <strong>2 RED DOTS:</strong> Left eye (OS) suppression</div>
+                    <div>• <strong>3 GREEN DOTS:</strong> Right eye (OD) suppression</div>
+                    <div>• <strong>5 DOTS:</strong> Diplopia (Strabismus / decompensated phoria)</div>
+                  </div>
                 </div>
               )}
+
+              {/* Polarity Invert Toggle */}
+              <button
+                type="button"
+                onClick={() => updateState({ invertPolarity: !state.invertPolarity })}
+                className={`w-full py-2 text-[11px] font-bold border uppercase tracking-wider cursor-pointer ${
+                  state.invertPolarity
+                    ? 'bg-white text-black border-white'
+                    : 'bg-[#12151E] border-[#212634] text-neutral-300 hover:text-white'
+                }`}
+              >
+                {state.invertPolarity
+                  ? '■ INVERTED: WHITE ON BLACK [I]'
+                  : '□ STANDARD: BLACK ON WHITE [I]'}
+              </button>
             </div>
           )}
 
-          {/* CONTRAST SENSITIVITY DECK */}
-          {state.activeCategory === 'contrast_wizard' && (
-            <div className="bg-[#0D0F14] border border-[#1E2330] p-3 space-y-2.5 font-mono">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex border border-[#252B3B]">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateState((prev) => ({
-                        ...prev,
-                        contrastWizard: { ...prev.contrastWizard, mode: 'letter_contrast' },
-                      }))
-                    }
-                    className={`px-3 py-1 text-[11px] uppercase cursor-pointer ${
-                      state.contrastWizard.mode === 'letter_contrast'
-                        ? 'bg-amber-500 text-black font-bold'
-                        : 'bg-[#131720] text-neutral-300'
-                    }`}
-                  >
-                    LETTER CONTRAST
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateState((prev) => ({
-                        ...prev,
-                        contrastWizard: { ...prev.contrastWizard, mode: 'sine_grating' },
-                      }))
-                    }
-                    className={`px-3 py-1 text-[11px] uppercase cursor-pointer ${
-                      state.contrastWizard.mode === 'sine_grating'
-                        ? 'bg-amber-500 text-black font-bold'
-                        : 'bg-[#131720] text-neutral-300'
-                    }`}
-                  >
-                    SINE GRATING (CPD)
-                  </button>
+          {/* ========================================================================= */}
+          {/* 5. eETDRS WIZARD MODE: PROTOCOL DECK, EYE, STAIRCASE TELEMETRY             */}
+          {/* ========================================================================= */}
+          {state.activeCategory === 'etdrs_wizard' && (
+            <div className="bg-[#0D0F14] border border-[#1E2330] p-3 space-y-3 flex-1 flex flex-col font-mono">
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400 border-b border-[#1A1E29] pb-1.5">
+                <span>eETDRS CLINICAL PROTOCOL</span>
+                <span className="text-amber-400 font-bold">SLOAN MANDATORY</span>
+              </div>
+
+              {/* Eye Selection */}
+              <div className="space-y-1.5">
+                <div className="text-[10px] uppercase tracking-wider text-neutral-400">
+                  TESTED EYE
                 </div>
-                <span className="text-xs text-amber-400 font-bold">
+                <div className="grid grid-cols-3 gap-1">
+                  {(['OD', 'OS', 'OU'] as const).map((eye) => (
+                    <button
+                      key={eye}
+                      type="button"
+                      onClick={() =>
+                        updateState((prev) => ({
+                          ...prev,
+                          etdrsWizard: { ...prev.etdrsWizard, testedEye: eye },
+                        }))
+                      }
+                      className={`py-2 text-xs font-bold border cursor-pointer ${
+                        state.etdrsWizard.testedEye === eye
+                          ? 'bg-amber-500 text-black border-amber-400'
+                          : 'bg-[#131720] border-[#252B3B] text-neutral-300'
+                      }`}
+                    >
+                      {eye}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Protocol Staircase Status */}
+              <div className="bg-[#08090C] border border-[#1E2330] p-2.5 space-y-2">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-neutral-400">PHASE:</span>
+                  <span className="text-emerald-400 font-bold uppercase">
+                    {state.etdrsWizard.phase}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-neutral-400">FINAL LOGMAR:</span>
+                  <span className="text-amber-400 font-bold">
+                    {state.etdrsWizard.finalLogMAR !== null
+                      ? state.etdrsWizard.finalLogMAR.toFixed(2)
+                      : 'IN PROGRESS'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-neutral-400">ETDRS LETTERS:</span>
+                  <span className="text-amber-400 font-bold">
+                    {state.etdrsWizard.totalLetterScore !== null
+                      ? `${state.etdrsWizard.totalLetterScore} / 100`
+                      : '—'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Restart Protocol Button */}
+              <button
+                type="button"
+                onClick={() =>
+                  updateState((prev) => ({
+                    ...prev,
+                    randomSeed: prev.randomSeed + 1,
+                    etdrsWizard: {
+                      phase: 'threshold',
+                      currentLogMAR: 0.4,
+                      lineScores: {},
+                      finalLogMAR: null,
+                      totalLetterScore: null,
+                      testedEye: prev.etdrsWizard.testedEye,
+                    },
+                  }))
+                }
+                className="w-full py-2.5 bg-[#171C28] hover:bg-[#22293A] border border-[#2C3347] text-xs text-neutral-200 uppercase cursor-pointer"
+              >
+                RESTART eETDRS PROTOCOL
+              </button>
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* 6. CONTRAST SENSITIVITY MODE: CONTRAST %, CPD SPATIAL FREQUENCY & ANGLES   */}
+          {/* ========================================================================= */}
+          {state.activeCategory === 'contrast_wizard' && (
+            <div className="bg-[#0D0F14] border border-[#1E2330] p-3 space-y-3 flex-1 flex flex-col font-mono">
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400 border-b border-[#1A1E29] pb-1.5">
+                <span>CONTRAST SENSITIVITY SELECTOR</span>
+                <span className="text-amber-400 font-bold">
                   {state.contrastWizard.contrastPercent}% (LogCS{' '}
                   {Math.log10(100 / state.contrastWizard.contrastPercent).toFixed(2)})
                 </span>
               </div>
 
-              <div className="grid grid-cols-8 gap-1">
-                {[100, 50, 25, 12.5, 6.25, 3.12, 1.56, 0.8].map((pct) => (
-                  <button
-                    key={pct}
-                    type="button"
-                    onClick={() =>
-                      updateState((prev) => ({
-                        ...prev,
-                        contrastWizard: { ...prev.contrastWizard, contrastPercent: pct },
-                      }))
-                    }
-                    className={`py-1.5 text-[11px] border cursor-pointer ${
-                      state.contrastWizard.contrastPercent === pct
-                        ? 'bg-amber-500 text-black border-amber-400 font-bold'
-                        : 'bg-[#131720] border-[#252B3B] text-neutral-300'
-                    }`}
-                  >
-                    {pct}%
-                  </button>
-                ))}
+              {/* Mode Selector */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateState((prev) => ({
+                      ...prev,
+                      contrastWizard: { ...prev.contrastWizard, mode: 'letter_contrast' },
+                    }))
+                  }
+                  className={`py-2 text-[11px] font-bold border uppercase cursor-pointer ${
+                    state.contrastWizard.mode === 'letter_contrast'
+                      ? 'bg-amber-500 text-black border-amber-400'
+                      : 'bg-[#131720] border-[#252B3B] text-neutral-300'
+                  }`}
+                >
+                  LETTER CONTRAST
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateState((prev) => ({
+                      ...prev,
+                      contrastWizard: { ...prev.contrastWizard, mode: 'sine_grating' },
+                    }))
+                  }
+                  className={`py-2 text-[11px] font-bold border uppercase cursor-pointer ${
+                    state.contrastWizard.mode === 'sine_grating'
+                      ? 'bg-amber-500 text-black border-amber-400'
+                      : 'bg-[#131720] border-[#252B3B] text-neutral-300'
+                  }`}
+                >
+                  SINE GRATING (CPD)
+                </button>
               </div>
 
+              {/* Contrast % Buttons */}
+              <div className="space-y-1.5">
+                <div className="text-[10px] uppercase tracking-wider text-neutral-400">
+                  CONTRAST PERCENT
+                </div>
+                <div className="grid grid-cols-4 gap-1">
+                  {[100, 50, 25, 12.5, 6.25, 3.12, 1.56, 0.8].map((pct) => (
+                    <button
+                      key={pct}
+                      type="button"
+                      onClick={() =>
+                        updateState((prev) => ({
+                          ...prev,
+                          contrastWizard: { ...prev.contrastWizard, contrastPercent: pct },
+                        }))
+                      }
+                      className={`py-1.5 text-[11px] border font-bold cursor-pointer ${
+                        state.contrastWizard.contrastPercent === pct
+                          ? 'bg-amber-500 text-black border-amber-400'
+                          : 'bg-[#131720] border-[#252B3B] text-neutral-300'
+                      }`}
+                    >
+                      {pct}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sine Grating Angles if in Grating Mode */}
               {state.contrastWizard.mode === 'sine_grating' && (
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <div className="flex gap-1">
-                    {[1.5, 3, 6, 12, 18].map((cpd) => (
-                      <button
-                        key={cpd}
-                        type="button"
-                        onClick={() =>
-                          updateState((prev) => ({
-                            ...prev,
-                            contrastWizard: {
-                              ...prev.contrastWizard,
-                              spatialFrequencyCpd: cpd,
-                            },
-                          }))
-                        }
-                        className={`flex-1 py-1 text-[10px] border cursor-pointer ${
-                          state.contrastWizard.spatialFrequencyCpd === cpd
-                            ? 'bg-emerald-500 text-black border-emerald-400 font-bold'
-                            : 'bg-[#131720] border-[#252B3B] text-neutral-300'
-                        }`}
-                      >
-                        {cpd}c
-                      </button>
-                    ))}
+                <div className="space-y-1.5 pt-1">
+                  <div className="text-[10px] uppercase tracking-wider text-neutral-400">
+                    GRATING ORIENTATION
                   </div>
-                  <div className="flex gap-1">
+                  <div className="grid grid-cols-4 gap-1">
                     {[
                       { deg: 0, label: 'VERT |' },
                       { deg: 45, label: '45° /' },
@@ -967,9 +1745,9 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                             },
                           }))
                         }
-                        className={`flex-1 py-1 text-[10px] border cursor-pointer ${
+                        className={`py-1.5 text-[10px] border font-bold cursor-pointer ${
                           state.contrastWizard.gratingAngleDeg === g.deg
-                            ? 'bg-amber-500 text-black border-amber-400 font-bold'
+                            ? 'bg-emerald-500 text-black border-emerald-400'
                             : 'bg-[#131720] border-[#252B3B] text-neutral-300'
                         }`}
                       >
@@ -979,13 +1757,36 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Polarity Invert Toggle */}
+              <button
+                type="button"
+                onClick={() => updateState({ invertPolarity: !state.invertPolarity })}
+                className={`w-full py-2 text-[11px] font-bold border uppercase tracking-wider cursor-pointer ${
+                  state.invertPolarity
+                    ? 'bg-white text-black border-white'
+                    : 'bg-[#12151E] border-[#212634] text-neutral-300 hover:text-white'
+                }`}
+              >
+                {state.invertPolarity
+                  ? '■ INVERTED: WHITE ON BLACK [I]'
+                  : '□ STANDARD: BLACK ON WHITE [I]'}
+              </button>
             </div>
           )}
 
-          {/* MACULAR & COLOR VISION DECK (With Interactive Farnsworth D-15 Controls) */}
+          {/* ========================================================================= */}
+          {/* 7. MACULAR / COLOR VISION: AMSLER, ISHIHARA PLATES & D-15 HUE CONTROLS     */}
+          {/* ========================================================================= */}
           {state.activeCategory === 'macular_color' && (
-            <div className="bg-[#0D0F14] border border-[#1E2330] p-3 space-y-2.5 font-mono">
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
+            <div className="bg-[#0D0F14] border border-[#1E2330] p-3 space-y-3 flex-1 flex flex-col font-mono">
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400 border-b border-[#1A1E29] pb-1.5">
+                <span>MACULAR & COLOR TEST SELECTOR</span>
+                <span className="text-amber-400 font-bold">{state.macularColorMode.replace('_', ' ').toUpperCase()}</span>
+              </div>
+
+              {/* Sub-mode Selector */}
+              <div className="grid grid-cols-3 gap-1">
                 {(
                   [
                     { id: 'amsler_standard', label: 'AMSLER W/B' },
@@ -1000,10 +1801,10 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                     key={mc.id}
                     type="button"
                     onClick={() => updateState({ macularColorMode: mc.id })}
-                    className={`py-1.5 text-[10px] font-bold border uppercase cursor-pointer ${
+                    className={`py-2 text-[10px] font-bold border uppercase cursor-pointer ${
                       state.macularColorMode === mc.id
                         ? 'bg-amber-500 text-black border-amber-400'
-                        : 'bg-[#131720] border-[#252B3B] text-neutral-300'
+                        : 'bg-[#131720] border-[#252B3B] text-neutral-300 hover:text-white'
                     }`}
                   >
                     {mc.label}
@@ -1011,18 +1812,19 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                 ))}
               </div>
 
+              {/* Ishihara Plate Grid */}
               {state.macularColorMode === 'color_ishihara' && (
                 <div className="space-y-1.5 bg-[#090B0E] p-2 border border-[#1E2330]">
                   <div className="text-[11px] text-emerald-400 font-bold">
-                    KEY: {ISHIHARA_PLATES[state.colorPlateIndex % ISHIHARA_PLATES.length].type}
+                    PLATE TYPE: {ISHIHARA_PLATES[state.colorPlateIndex % ISHIHARA_PLATES.length].type}
                   </div>
-                  <div className="grid grid-cols-8 gap-1">
+                  <div className="grid grid-cols-7 gap-1">
                     {ISHIHARA_PLATES.map((pl, idx) => (
                       <button
                         key={idx}
                         type="button"
                         onClick={() => updateState({ colorPlateIndex: idx })}
-                        className={`py-1 text-xs font-bold border cursor-pointer ${
+                        className={`py-1.5 text-xs font-bold border cursor-pointer ${
                           state.colorPlateIndex === idx
                             ? 'bg-amber-500 text-black border-amber-400'
                             : 'bg-[#131720] border-[#252B3B] text-neutral-300'
@@ -1035,18 +1837,22 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                 </div>
               )}
 
+              {/* D-15 Controls */}
               {state.macularColorMode === 'color_d15' && (
-                <div className="flex flex-wrap items-center justify-between gap-2 bg-[#090B0E] p-2 border border-[#1E2330] text-[11px]">
-                  <span
-                    className={
-                      d15Analysis.crossings > 0
-                        ? 'text-red-400 font-bold'
-                        : 'text-emerald-400 font-bold'
-                    }
-                  >
-                    {d15Analysis.status}
-                  </span>
-                  <div className="flex gap-1.5">
+                <div className="space-y-2 bg-[#090B0E] p-2.5 border border-[#1E2330]">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-neutral-400">ANALYSIS:</span>
+                    <span
+                      className={
+                        d15Analysis.crossings > 0
+                          ? 'text-red-400 font-bold'
+                          : 'text-emerald-400 font-bold'
+                      }
+                    >
+                      {d15Analysis.status} ({d15Analysis.crossings} crossings)
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
                     <button
                       type="button"
                       onClick={() =>
@@ -1055,7 +1861,7 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                           d15RemainingCaps: [...DEFAULT_D15_SHUFFLED],
                         })
                       }
-                      className="px-2.5 py-1 bg-[#131720] hover:bg-[#1E2433] border border-[#252B3B] text-neutral-200 uppercase cursor-pointer"
+                      className="py-2 bg-[#131720] hover:bg-[#1E2433] border border-[#252B3B] text-neutral-200 uppercase cursor-pointer text-xs"
                     >
                       SHUFFLE CAPS
                     </button>
@@ -1067,287 +1873,143 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                           d15RemainingCaps: [],
                         })
                       }
-                      className="px-2.5 py-1 bg-[#131720] hover:bg-[#1E2433] border border-[#252B3B] text-amber-400 uppercase cursor-pointer"
+                      className="py-2 bg-[#131720] hover:bg-[#1E2433] border border-[#252B3B] text-amber-400 uppercase cursor-pointer text-xs font-bold"
                     >
-                      SOLVE 1–15 REF
+                      SOLVE REFERENCE
                     </button>
                   </div>
                 </div>
               )}
             </div>
           )}
-        </section>
 
-        {/* RIGHT BAY (4 cols): OPTOTYPE MATRIX, MASKING, CROWDING & ROUTINE KEYS */}
-        <section className="lg:col-span-4 flex flex-col gap-2 font-mono">
-          {/* 1. OPTOTYPE FAMILY KEYGRID */}
-          <div className="bg-[#0D0F14] border border-[#1E2330] p-2.5 space-y-2">
-            <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400 border-b border-[#1A1E29] pb-1">
-              <span>OPTOTYPE SELECTOR</span>
-              <span className="text-amber-400">{state.optotypeSet.toUpperCase()}</span>
-            </div>
+          {/* ========================================================================= */}
+          {/* 8. NEAR VISION MODE: 40CM PRESBYOPIA READING DECK & ADD CONTROLS           */}
+          {/* ========================================================================= */}
+          {state.activeCategory === 'near_vision' && (
+            <div className="bg-[#0D0F14] border border-[#1E2330] p-3 space-y-3 flex-1 flex flex-col font-mono">
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400 border-b border-[#1A1E29] pb-1.5">
+                <span>40CM PRESBYOPIA READING CARD</span>
+                <span className="text-amber-400 font-bold">+2.50 D DEMAND</span>
+              </div>
 
-            <div className="grid grid-cols-4 gap-1.5">
-              {OPTOTYPE_KEYS.map((k) => {
-                const isSelected =
-                  state.activeCategory === 'va_chart' && state.optotypeSet === k.id;
-                return (
-                  <button
-                    key={k.id}
-                    type="button"
-                    onClick={() =>
-                      updateState({
-                        activeCategory: 'va_chart',
-                        optotypeSet: k.id,
-                        activeLetterIndex: 0,
-                        currentLineScores: [
-                          'untested',
-                          'untested',
-                          'untested',
-                          'untested',
-                          'untested',
-                        ],
-                      })
-                    }
-                    className={`flex flex-col items-center justify-center py-2.5 px-1 border transition cursor-pointer ${
-                      isSelected
-                        ? 'bg-[#1B2130] border-amber-500 border-t-2 border-t-amber-400 text-white'
-                        : 'bg-[#12151E] border-[#212634] text-neutral-400 hover:text-white hover:bg-[#171B26]'
-                    }`}
-                  >
-                    <div className="h-6 flex items-center justify-center mb-1.5">
-                      <OptotypeSvg
-                        symbol={k.sample}
-                        sizePx={20}
-                        color={isSelected ? '#F59E0B' : '#CBD5E1'}
-                      />
+              {/* Add Power Refraction Steppers */}
+              <div className="bg-[#08090C] border border-[#1E2330] p-2.5 space-y-2">
+                <div className="text-[10px] uppercase tracking-wider text-neutral-400">
+                  PRESBYOPIC ADD POWER
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-[#10141D] p-2 border border-[#212838] flex flex-col items-center">
+                    <span className="text-[10px] text-amber-400 font-bold">OD ADD</span>
+                    <span className="text-base font-bold text-white">
+                      +{(state.refraction?.od?.add ?? 0).toFixed(2)} D
+                    </span>
+                    <div className="flex gap-1 mt-1.5 w-full">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateState((prev) => ({
+                            ...prev,
+                            refraction: {
+                              ...prev.refraction,
+                              od: {
+                                ...prev.refraction.od,
+                                add: Math.max(0, (prev.refraction.od.add ?? 0) - 0.25),
+                              },
+                            },
+                          }))
+                        }
+                        className="flex-1 py-1 bg-[#161B26] hover:bg-[#202738] border border-[#2C344A] text-xs font-bold"
+                      >
+                        -0.25
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateState((prev) => ({
+                            ...prev,
+                            refraction: {
+                              ...prev.refraction,
+                              od: {
+                                ...prev.refraction.od,
+                                add: (prev.refraction.od.add ?? 0) + 0.25,
+                              },
+                            },
+                          }))
+                        }
+                        className="flex-1 py-1 bg-[#161B26] hover:bg-[#202738] border border-[#2C344A] text-xs font-bold text-amber-400"
+                      >
+                        +0.25
+                      </button>
                     </div>
-                    <span className="text-[10px] font-bold tracking-wider uppercase">
-                      {k.label}
+                  </div>
+
+                  <div className="bg-[#10141D] p-2 border border-[#212838] flex flex-col items-center">
+                    <span className="text-[10px] text-emerald-400 font-bold">OS ADD</span>
+                    <span className="text-base font-bold text-white">
+                      +{(state.refraction?.os?.add ?? 0).toFixed(2)} D
                     </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* DYOP SPIN DIRECTION & RPM SPEED SUB-DECK */}
-            {state.optotypeSet === 'dyop' && (
-              <div className="pt-2 border-t border-[#1A1E29] flex items-center justify-between gap-2 text-[10px]">
-                <div className="flex border border-[#252B3B]">
-                  <button
-                    type="button"
-                    onClick={() => updateState({ dyopDirection: 'cw' })}
-                    className={`px-2.5 py-1 font-bold uppercase cursor-pointer ${
-                      state.dyopDirection === 'cw'
-                        ? 'bg-amber-500 text-black'
-                        : 'bg-[#12151E] text-neutral-400'
-                    }`}
-                  >
-                    CW ↻
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateState({ dyopDirection: 'ccw' })}
-                    className={`px-2.5 py-1 font-bold uppercase cursor-pointer ${
-                      state.dyopDirection === 'ccw'
-                        ? 'bg-amber-500 text-black'
-                        : 'bg-[#12151E] text-neutral-400'
-                    }`}
-                  >
-                    CCW ↺
-                  </button>
-                </div>
-
-                <div className="flex gap-1">
-                  {[20, 40, 60].map((rpm) => (
-                    <button
-                      key={rpm}
-                      type="button"
-                      onClick={() => updateState({ dyopRpm: rpm })}
-                      className={`px-2 py-1 border font-bold cursor-pointer ${
-                        state.dyopRpm === rpm
-                          ? 'bg-emerald-500 text-black border-emerald-400'
-                          : 'bg-[#12151E] border-[#212634] text-neutral-400'
-                      }`}
-                    >
-                      {rpm} RPM
-                    </button>
-                  ))}
+                    <div className="flex gap-1 mt-1.5 w-full">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateState((prev) => ({
+                            ...prev,
+                            refraction: {
+                              ...prev.refraction,
+                              os: {
+                                ...prev.refraction.os,
+                                add: Math.max(0, (prev.refraction.os.add ?? 0) - 0.25),
+                              },
+                            },
+                          }))
+                        }
+                        className="flex-1 py-1 bg-[#161B26] hover:bg-[#202738] border border-[#2C344A] text-xs font-bold"
+                      >
+                        -0.25
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateState((prev) => ({
+                            ...prev,
+                            refraction: {
+                              ...prev.refraction,
+                              os: {
+                                ...prev.refraction.os,
+                                add: (prev.refraction.os.add ?? 0) + 0.25,
+                              },
+                            },
+                          }))
+                        }
+                        className="flex-1 py-1 bg-[#161B26] hover:bg-[#202738] border border-[#2C344A] text-xs font-bold text-emerald-400"
+                      >
+                        +0.25
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* 2. APERTURE & ISOLATION MASKING KEYPAD */}
-          <div className="bg-[#0D0F14] border border-[#1E2330] p-2.5 space-y-2">
-            <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400 border-b border-[#1A1E29] pb-1">
-              <span>APERTURE ISOLATION</span>
-              <span>KEYS: F / L / V / S</span>
-            </div>
-
-            <div className="grid grid-cols-4 gap-1.5">
-              {(
-                [
-                  { id: 'full', label: 'FULL [F]', glyph: '⣿⣿' },
-                  { id: 'line', label: 'H-LINE [L]', glyph: '══' },
-                  { id: 'column', label: 'V-COL [V]', glyph: '║' },
-                  { id: 'single', label: 'SINGLE [S]', glyph: '回' },
-                ] as Array<{ id: ChartIsolationMode; label: string; glyph: string }>
-              ).map((iso) => {
-                const isSelected = state.isolationMode === iso.id;
-                return (
-                  <button
-                    key={iso.id}
-                    type="button"
-                    onClick={() =>
-                      updateState({
-                        activeCategory: 'va_chart',
-                        isolationMode: iso.id,
-                      })
-                    }
-                    className={`flex flex-col items-center justify-center py-2 px-1 border transition cursor-pointer ${
-                      isSelected
-                        ? 'bg-[#1B2130] border-amber-500 border-t-2 border-t-amber-400 text-white font-bold'
-                        : 'bg-[#12151E] border-[#212634] text-neutral-400 hover:text-white'
-                    }`}
-                  >
-                    <span className="text-sm leading-none mb-1 text-amber-400">
-                      {iso.glyph}
-                    </span>
-                    <span className="text-[10px]">{iso.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="pt-1">
-              <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-400 mb-1">
-                CONTOUR CROWDING BARS [KEY: C]
-              </div>
-              <div className="grid grid-cols-4 gap-1.5">
-                {(
-                  [
-                    { id: 'none', label: 'OFF' },
-                    { id: 'bars_0.5x', label: '0.5× BARS' },
-                    { id: 'bars_1.0x', label: '1.0× BARS' },
-                    { id: 'box', label: 'FRAME BOX' },
-                  ] as Array<{ id: CrowdingMode; label: string }>
-                ).map((cr) => (
-                  <button
-                    key={cr.id}
-                    type="button"
-                    onClick={() => updateState({ crowdingMode: cr.id })}
-                    className={`py-2 text-[10px] font-bold border uppercase cursor-pointer ${
-                      state.crowdingMode === cr.id
-                        ? 'bg-emerald-500 text-black border-emerald-400'
-                        : 'bg-[#12151E] border-[#212634] text-neutral-400 hover:text-white'
-                    }`}
-                  >
-                    {cr.label}
-                  </button>
-                ))}
+              {/* Working Distance Note */}
+              <div className="text-[10px] text-neutral-400 bg-[#0F121A] p-2.5 border border-[#1E2330] leading-relaxed">
+                • <strong>WORKING DISTANCE</strong>: Standardized at 40 cm (16 inches), creating an optical vergence demand of +2.50 D.
+                <br />
+                • Grade reading speed and comfortable threshold with Jaeger (J1–J14) and point-size (N4–N18) tiers.
               </div>
             </div>
-          </div>
-
-          {/* 3. CHROMATIC & POLARITY FILTERS */}
-          <div className="bg-[#0D0F14] border border-[#1E2330] p-2.5 space-y-2">
-            <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400 border-b border-[#1A1E29] pb-1">
-              <span>OPTICAL FILTERS & POLARITY</span>
-              <span>KEYS: D / I</span>
-            </div>
-
-            <div className="grid grid-cols-4 gap-1.5">
-              {(
-                [
-                  { id: 'none', label: 'CLEAR', dot: 'bg-neutral-400' },
-                  {
-                    id: 'split',
-                    label: 'R/G SPLIT',
-                    dot: 'bg-gradient-to-r from-red-500 to-green-500',
-                  },
-                  { id: 'red_only', label: 'RED 625', dot: 'bg-red-500' },
-                  { id: 'green_only', label: 'GRN 535', dot: 'bg-green-500' },
-                ] as Array<{ id: DuochromeOverlay; label: string; dot: string }>
-              ).map((dc) => (
-                <button
-                  key={dc.id}
-                  type="button"
-                  onClick={() => updateState({ duochromeOverlay: dc.id })}
-                  className={`flex items-center justify-center gap-1.5 py-2 px-1 text-[10px] font-bold border uppercase cursor-pointer ${
-                    state.duochromeOverlay === dc.id
-                      ? 'bg-[#1B2130] border-amber-500 text-white'
-                      : 'bg-[#12151E] border-[#212634] text-neutral-400 hover:text-white'
-                  }`}
-                >
-                  <span className={`w-2 h-2 rounded-full ${dc.dot}`} />
-                  <span>{dc.label}</span>
-                </button>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => updateState({ invertPolarity: !state.invertPolarity })}
-              className={`w-full py-2 text-[11px] font-bold border uppercase tracking-wider cursor-pointer ${
-                state.invertPolarity
-                  ? 'bg-white text-black border-white'
-                  : 'bg-[#12151E] border-[#212634] text-neutral-300 hover:text-white'
-              }`}
-            >
-              {state.invertPolarity
-                ? '■ INVERTED: WHITE ON BLACK [I]'
-                : '□ STANDARD: BLACK ON WHITE [I]'}
-            </button>
-          </div>
-
-          {/* 4. PROGRAMMABLE SEQUENCE MACROS */}
-          <div className="bg-[#0D0F14] border border-[#1E2330] p-2.5 space-y-2 flex-1 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400 border-b border-[#1A1E29] pb-1 mb-2">
-                <span>EXAM SEQUENCE MACROS</span>
-                <button
-                  type="button"
-                  onClick={resetSession}
-                  className="text-neutral-400 hover:text-amber-400 uppercase cursor-pointer"
-                >
-                  [RESET]
-                </button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-1.5">
-                {WORKFLOW_PRESETS.map((preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() =>
-                      updateState((prev) => ({
-                        ...prev,
-                        ...preset.patch,
-                        currentLineScores: [
-                          'untested',
-                          'untested',
-                          'untested',
-                          'untested',
-                          'untested',
-                        ],
-                      }))
-                    }
-                    className="py-2 px-2.5 bg-[#12151E] hover:bg-[#1B202E] active:bg-amber-500 active:text-black border border-[#212634] text-left text-[11px] font-bold text-neutral-200 uppercase truncate cursor-pointer"
-                  >
-                    {preset.badge}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="text-[10px] text-neutral-500 border-t border-[#1A1E29] pt-1.5 flex items-center justify-between">
-              <span>←/→ TEST MODE • ↑/↓ SIZE • SPACE SHUFFLE</span>
-              <span>[ / ] TARGET</span>
-            </div>
-          </div>
+          )}
         </section>
       </main>
+
+      {/* MINI FLOATING PATIENT VIEW PREVIEW */}
+      <MiniPatientPreview
+        state={state}
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        onOpenExternal={onOpenPatientView}
+        onUpdateState={updateState}
+      />
 
       <CalibrationDialog
         isOpen={isSettingsOpen}
