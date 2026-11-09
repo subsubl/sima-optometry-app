@@ -109,6 +109,10 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isQrOpen, setIsQrOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(true);
+  const [mobileBayTab, setMobileBayTab] = useState<
+    'chart_score' | 'ladder' | 'phoropter' | 'modes' | 'all'
+  >('chart_score');
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
 
   useClinicalHotkeys({ state, updateState, randomizeOptotypes });
 
@@ -294,6 +298,64 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
     });
   };
 
+  const handleMarkAllIncorrect = () => {
+    if (state.activeCategory === 'etdrs_wizard') {
+      updateState((prev) => {
+        const curLog = prev.etdrsWizard.currentLogMAR;
+        const key = curLog.toFixed(1);
+        const nextRow: LetterScoreStatus[] = [
+          'incorrect',
+          'incorrect',
+          'incorrect',
+          'incorrect',
+          'incorrect',
+        ];
+        const nextLineScores = { ...prev.etdrsWizard.lineScores, [key]: nextRow };
+        return {
+          ...prev,
+          etdrsWizard: {
+            ...prev.etdrsWizard,
+            lineScores: nextLineScores,
+          },
+        };
+      });
+      return;
+    }
+
+    updateState({
+      currentLineScores: ['incorrect', 'incorrect', 'incorrect', 'incorrect', 'incorrect'],
+    });
+  };
+
+  const handleResetLineScores = () => {
+    if (state.activeCategory === 'etdrs_wizard') {
+      updateState((prev) => {
+        const curLog = prev.etdrsWizard.currentLogMAR;
+        const key = curLog.toFixed(1);
+        const nextRow: LetterScoreStatus[] = [
+          'untested',
+          'untested',
+          'untested',
+          'untested',
+          'untested',
+        ];
+        const nextLineScores = { ...prev.etdrsWizard.lineScores, [key]: nextRow };
+        return {
+          ...prev,
+          etdrsWizard: {
+            ...prev.etdrsWizard,
+            lineScores: nextLineScores,
+          },
+        };
+      });
+      return;
+    }
+
+    updateState({
+      currentLineScores: ['untested', 'untested', 'untested', 'untested', 'untested'],
+    });
+  };
+
   const d15Analysis = analyzeD15Arrangement(state.d15ArrangedCaps || [0]);
 
   // Determine which primary selector/ladder should be active in the Left Bay
@@ -306,31 +368,170 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
   return (
     <div className="min-h-dvh w-full bg-[#08090C] text-[#E2E8F0] flex flex-col select-none font-sans">
       {/* TOP INSTRUMENT CONSOLE DECK */}
-      <header className="bg-[#0D0F14] border-b border-[#1E2330] px-3 py-1.5 flex flex-wrap items-center justify-between gap-2">
-        {/* Brand Identity */}
-        <div className="flex items-center gap-2.5 pr-2">
-          <div className="w-7 h-7 bg-[#151922] border border-[#2D3446] flex items-center justify-center">
-            <div className="w-3.5 h-3.5 border-2 border-amber-500 rounded-full flex items-center justify-center">
-              <div className="w-1 h-1 bg-amber-400 rounded-full" />
+      <header className="bg-[#0D0F14] border-b border-[#1E2330] px-2 sm:px-3 py-1.5 flex flex-col gap-1.5 shrink-0 select-none">
+        {/* Row 1: Brand, Connection Status, Quick Controls & Mobile Drawer Trigger */}
+        <div className="flex items-center justify-between gap-2">
+          {/* Brand Identity & Connection Status */}
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 bg-[#151922] border border-[#2D3446] flex items-center justify-center shrink-0">
+              <div className="w-3.5 h-3.5 border-2 border-amber-500 rounded-full flex items-center justify-center">
+                <div className="w-1 h-1 bg-amber-400 rounded-full" />
+              </div>
             </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-sm font-mono font-black tracking-[0.22em] text-white">
+                SIMA
+              </span>
+              <span className="hidden sm:inline text-[10px] font-mono uppercase tracking-[0.18em] text-neutral-500">
+                OPTOMETRY
+              </span>
+            </div>
+            <span
+              className={`text-[9px] font-mono px-1.5 py-0.5 rounded-xs uppercase tracking-wider font-bold ${
+                isConnected
+                  ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-700/50'
+                  : 'bg-neutral-900 text-neutral-400 border border-neutral-700/50'
+              }`}
+            >
+              {isConnected ? 'LIVE' : 'LOCAL'}
+            </span>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-sm font-mono font-black tracking-[0.22em] text-white">
-              SIMA
-            </span>
-            <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-neutral-500">
-              OPTOMETRY
-            </span>
+
+          {/* Right Action Controls (Adaptive for Desktop vs Mobile) */}
+          <div className="flex items-center gap-1.5 font-mono text-[11px]">
+            {/* Desktop Notation Pills */}
+            <div className="hidden md:flex bg-[#07080B] border border-[#1E2330] p-0.5">
+              {(
+                [
+                  { id: 'snellen_us', label: '20/XX' },
+                  { id: 'snellen_metric', label: '6/XX' },
+                  { id: 'decimal', label: 'DEC' },
+                  { id: 'logmar', label: 'LOG' },
+                ] as Array<{ id: AcuityNotation; label: string }>
+              ).map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => updateState({ doctorNotation: n.id })}
+                  className={`px-2 py-1 text-[10px] uppercase cursor-pointer touch-manipulation active:scale-95 ${
+                    state.doctorNotation === n.id
+                      ? 'bg-amber-500 text-black font-bold'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  {n.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Mobile Single-Tap Notation Cycle Pill */}
+            <button
+              type="button"
+              onClick={() => {
+                const notations: AcuityNotation[] = ['snellen_us', 'snellen_metric', 'decimal', 'logmar'];
+                const curIdx = notations.indexOf(state.doctorNotation);
+                const nextNotation = notations[(curIdx + 1) % notations.length];
+                updateState({ doctorNotation: nextNotation });
+              }}
+              className="flex md:hidden px-2 py-1 bg-[#12151E] border border-[#252B3C] text-amber-400 font-bold text-[10px] uppercase touch-manipulation active:bg-amber-500 active:text-black"
+              title="Tap to cycle notation format"
+            >
+              {state.doctorNotation === 'snellen_us'
+                ? '20/XX'
+                : state.doctorNotation === 'snellen_metric'
+                ? '6/XX'
+                : state.doctorNotation === 'decimal'
+                ? 'DEC'
+                : 'LOG'}
+            </button>
+
+            {/* Blackout Patient Screen Button */}
+            <button
+              type="button"
+              onClick={() => updateState({ isBlackout: !state.isBlackout })}
+              className={`px-2.5 py-1.5 border uppercase cursor-pointer touch-manipulation active:scale-95 ${
+                state.isBlackout
+                  ? 'bg-red-600 text-white border-red-500 font-bold'
+                  : 'bg-[#13161F] text-neutral-300 border-[#262B38] hover:bg-[#1C202D]'
+              }`}
+              title="Blackout Patient Screen (Key: B)"
+            >
+              {state.isBlackout ? '● BLK ON' : 'BLK'}
+            </button>
+
+            {/* Floating Patient Preview Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setIsPreviewOpen((prev) => !prev)}
+              className={`px-2.5 py-1.5 border uppercase cursor-pointer flex items-center gap-1.5 font-bold transition touch-manipulation active:scale-95 ${
+                isPreviewOpen
+                  ? 'bg-[#10241B] text-emerald-300 border-emerald-500/80 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
+                  : 'bg-[#13161F] text-neutral-400 border-[#262B38] hover:bg-[#1C202D] hover:text-white'
+              }`}
+              title="Toggle Mini Floating Patient Preview (Key: P)"
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  isPreviewOpen ? 'bg-emerald-400 animate-pulse' : 'bg-neutral-500'
+                }`}
+              />
+              <span className="hidden sm:inline">PREVIEW [P]</span>
+              <span className="sm:hidden">PREV</span>
+            </button>
+
+            {/* Desktop Quick Actions */}
+            <div className="hidden md:flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setIsQrOpen(true)}
+                className="px-2.5 py-1.5 bg-[#13161F] hover:bg-[#1C202D] border border-[#262B38] text-neutral-200 uppercase cursor-pointer touch-manipulation"
+              >
+                Pair Remote
+              </button>
+
+              <button
+                type="button"
+                onClick={onOpenPatientView}
+                className="px-2.5 py-1.5 bg-[#13161F] hover:bg-[#1C202D] border border-[#262B38] text-amber-400 font-bold uppercase cursor-pointer touch-manipulation"
+              >
+                Patient Screen
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsSettingsOpen(true)}
+                className="p-1.5 bg-[#13161F] hover:bg-[#1C202D] border border-[#262B38] text-neutral-300 hover:text-white cursor-pointer touch-manipulation"
+                title="Settings & Calibration"
+                aria-label="Settings"
+              >
+                <SettingsIcon className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Mobile More/Drawer Trigger */}
+            <button
+              type="button"
+              onClick={() => setIsMobileDrawerOpen(true)}
+              className="flex md:hidden p-1.5 bg-[#13161F] hover:bg-[#1C202D] border border-[#262B38] text-neutral-300 hover:text-white cursor-pointer touch-manipulation"
+              title="More Actions & Settings"
+              aria-label="Open Mobile Menu"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="1.5" />
+                <circle cx="12" cy="5" r="1.5" />
+                <circle cx="12" cy="19" r="1.5" />
+              </svg>
+            </button>
           </div>
         </div>
 
-        {/* Center Mode Carousel Deck (Left/Right Keyboard Navigable) */}
-        <div className="flex items-center bg-[#07080B] border border-[#1E2330] p-0.5 overflow-x-auto">
+        {/* Row 2: Mode Carousel Deck (Horizontal Touch Scroll with Left/Right arrows) */}
+        <div className="flex items-center bg-[#07080B] border border-[#1E2330] p-0.5 overflow-x-auto no-scrollbar scroll-smooth snap-x touch-manipulation">
           <button
             type="button"
             onClick={() => stepCategory(-1)}
             title="Previous Test Mode (Left Arrow Key)"
-            className="px-2.5 py-1.5 bg-[#12151E] hover:bg-[#1C212E] text-neutral-400 hover:text-white font-mono text-xs border-r border-[#1E2330] cursor-pointer active:bg-amber-500 active:text-black"
+            className="px-2.5 py-2 bg-[#12151E] hover:bg-[#1C212E] active:bg-amber-500 active:text-black text-neutral-400 hover:text-white font-mono text-xs border-r border-[#1E2330] cursor-pointer shrink-0 touch-manipulation"
           >
             ◄
           </button>
@@ -342,9 +543,9 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                 key={m.id}
                 type="button"
                 onClick={() => updateState({ activeCategory: m.id })}
-                className={`px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition border-t-2 cursor-pointer shrink-0 ${
+                className={`px-3 py-2 font-mono text-[11px] sm:text-xs uppercase tracking-wider transition border-t-2 cursor-pointer shrink-0 snap-start touch-manipulation ${
                   isActive
-                    ? 'bg-[#191E2B] text-white border-t-amber-500 font-bold'
+                    ? 'bg-[#191E2B] text-white border-t-amber-500 font-bold shadow-sm'
                     : 'bg-transparent text-neutral-400 hover:text-neutral-200 hover:bg-[#11141C] border-t-transparent'
                 }`}
               >
@@ -358,102 +559,50 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
             type="button"
             onClick={() => stepCategory(1)}
             title="Next Test Mode (Right Arrow Key)"
-            className="px-2.5 py-1.5 bg-[#12151E] hover:bg-[#1C212E] text-neutral-400 hover:text-white font-mono text-xs border-l border-[#1E2330] cursor-pointer active:bg-amber-500 active:text-black"
+            className="px-2.5 py-2 bg-[#12151E] hover:bg-[#1C212E] active:bg-amber-500 active:text-black text-neutral-400 hover:text-white font-mono text-xs border-l border-[#1E2330] cursor-pointer shrink-0 touch-manipulation"
           >
             ►
           </button>
         </div>
-
-        {/* Right Hardware Controls */}
-        <div className="flex items-center gap-1.5 font-mono text-[11px]">
-          <div className="flex bg-[#07080B] border border-[#1E2330] p-0.5">
-            {(
-              [
-                { id: 'snellen_us', label: '20/XX' },
-                { id: 'snellen_metric', label: '6/XX' },
-                { id: 'decimal', label: 'DEC' },
-                { id: 'logmar', label: 'LOG' },
-              ] as Array<{ id: AcuityNotation; label: string }>
-            ).map((n) => (
-              <button
-                key={n.id}
-                type="button"
-                onClick={() => updateState({ doctorNotation: n.id })}
-                className={`px-2 py-1 text-[10px] uppercase cursor-pointer ${
-                  state.doctorNotation === n.id
-                    ? 'bg-amber-500 text-black font-bold'
-                    : 'text-neutral-400 hover:text-white'
-                }`}
-              >
-                {n.label}
-              </button>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => updateState({ isBlackout: !state.isBlackout })}
-            className={`px-2.5 py-1.5 border uppercase cursor-pointer ${
-              state.isBlackout
-                ? 'bg-red-600 text-white border-red-500 font-bold'
-                : 'bg-[#13161F] text-neutral-300 border-[#262B38] hover:bg-[#1C202D]'
-            }`}
-            title="Blackout Patient Screen (Key: B)"
-          >
-            {state.isBlackout ? '● BLK ON' : 'BLK'}
-          </button>
-
-          {/* Floating Patient Preview Toggle Button */}
-          <button
-            type="button"
-            onClick={() => setIsPreviewOpen((prev) => !prev)}
-            className={`px-2.5 py-1.5 border uppercase cursor-pointer flex items-center gap-1.5 font-bold transition ${
-              isPreviewOpen
-                ? 'bg-[#10241B] text-emerald-300 border-emerald-500/80 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
-                : 'bg-[#13161F] text-neutral-400 border-[#262B38] hover:bg-[#1C202D] hover:text-white'
-            }`}
-            title="Toggle Mini Floating Patient Preview (Key: P)"
-          >
-            <span
-              className={`w-2 h-2 rounded-full ${
-                isPreviewOpen ? 'bg-emerald-400 animate-pulse' : 'bg-neutral-500'
-              }`}
-            />
-            <span>PREVIEW [P]</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsQrOpen(true)}
-            className="px-2.5 py-1.5 bg-[#13161F] hover:bg-[#1C202D] border border-[#262B38] text-neutral-200 uppercase cursor-pointer"
-          >
-            Pair Remote
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenPatientView}
-            className="px-2.5 py-1.5 bg-[#13161F] hover:bg-[#1C202D] border border-[#262B38] text-amber-400 font-bold uppercase cursor-pointer"
-          >
-            Patient Screen
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsSettingsOpen(true)}
-            className="p-1.5 bg-[#13161F] hover:bg-[#1C202D] border border-[#262B38] text-neutral-300 hover:text-white cursor-pointer"
-            title="Settings & Calibration"
-            aria-label="Settings"
-          >
-            <SettingsIcon className="w-4 h-4" />
-          </button>
-        </div>
       </header>
 
-      {/* MAIN 3-BAY CLINICAL INSTRUMENT DECK */}
-      <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 p-2 max-w-[1920px] w-full mx-auto">
-        {/* LEFT BAY (3 cols): ADAPTIVE TEST LADDER / PRIMARY SELECTOR */}
-        <section className="lg:col-span-3 bg-[#0D0F14] border border-[#1E2330] flex flex-col p-2 gap-2">
+      {/* MOBILE SEGMENTED BAY SWITCHER (< md, for Phones and Narrow Fold Displays) */}
+      <nav
+        aria-label="Mobile Clinical Bays"
+        className="flex md:hidden bg-[#0A0C10] border-b border-[#1E2330] px-1 py-1 overflow-x-auto no-scrollbar font-mono text-[10px] shrink-0"
+      >
+        <div className="grid grid-cols-5 gap-1 w-full">
+          {[
+            { id: 'chart_score', label: '🎯 CHART' },
+            { id: 'ladder', label: '📏 SIZES' },
+            { id: 'phoropter', label: '🔬 PHOR' },
+            { id: 'modes', label: '⚙️ MODES' },
+            { id: 'all', label: '📋 ALL' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setMobileBayTab(tab.id as typeof mobileBayTab)}
+              className={`py-1.5 px-0.5 border text-center transition cursor-pointer flex flex-col items-center justify-center touch-manipulation active:scale-95 ${
+                mobileBayTab === tab.id
+                  ? 'bg-amber-500 border-amber-400 text-black font-black'
+                  : 'bg-[#11141C] border-[#1E2330] text-neutral-400 hover:text-white'
+              }`}
+            >
+              <span className="font-bold tracking-tight">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {/* MAIN CLINICAL INSTRUMENT DECK (Adaptive: Phones, Samsung Fold 4:3 / 21.6:18 tablets, and Desktops) */}
+      <main className="flex-1 grid grid-cols-1 md:grid-cols-12 xl:grid-cols-12 gap-2 p-2 max-w-[1920px] w-full mx-auto pb-20 md:pb-2 overflow-y-auto">
+        {/* LEFT BAY: ADAPTIVE TEST LADDER / PRIMARY SELECTOR */}
+        <section
+          className={`${
+            mobileBayTab === 'ladder' || mobileBayTab === 'all' ? 'flex' : 'hidden'
+          } md:flex md:col-span-5 xl:col-span-3 bg-[#0D0F14] border border-[#1E2330] flex-col p-2 gap-2`}
+        >
           {/* A. Acuity Drum (VA Chart, eETDRS, Duochrome, Letter Contrast) */}
           {isAcuityLadderApplicable && (
             <>
@@ -771,15 +920,21 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
             )}
         </section>
 
-        {/* CENTER BAY (5 cols): DIGITAL PHOROPTER LCD, OPTICAL VIEWPORT & SCORING DECK */}
-        <section className="lg:col-span-5 flex flex-col gap-2">
+        {/* CENTER BAY: DIGITAL PHOROPTER LCD, OPTICAL VIEWPORT & SCORING DECK */}
+        <section
+          className={`${
+            mobileBayTab === 'chart_score' || mobileBayTab === 'phoropter' || mobileBayTab === 'all'
+              ? 'flex'
+              : 'hidden'
+          } md:flex md:col-span-7 xl:col-span-5 flex-col gap-2`}
+        >
           {/* Digital Instrument Telemetry LCD Strip */}
-          <div className="bg-[#0B0D12] border border-[#1E2330] px-3.5 py-2 flex items-center justify-between font-mono">
-            <div className="flex items-baseline gap-3">
-              <span className="text-2xl font-black tracking-tight text-amber-400">
+          <div className="bg-[#0B0D12] border border-[#1E2330] px-3 py-2 flex items-center justify-between font-mono">
+            <div className="flex items-baseline gap-2.5 sm:gap-3">
+              <span className="text-xl sm:text-2xl font-black tracking-tight text-amber-400">
                 {scoredAcuity.label}
               </span>
-              <span className="text-xs text-neutral-400">
+              <span className="text-[11px] sm:text-xs text-neutral-400">
                 LOG{' '}
                 {scoredAcuity.interpolatedLogMAR >= 0
                   ? `+${scoredAcuity.interpolatedLogMAR.toFixed(2)}`
@@ -787,24 +942,24 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
               </span>
             </div>
 
-            <div className="flex items-center gap-1.5 text-[10px] uppercase">
-              <span className="px-2 py-0.5 bg-[#151924] border border-[#262C3D] text-neutral-300">
+            <div className="flex items-center gap-1 text-[9px] sm:text-[10px] uppercase">
+              <span className="px-1.5 sm:px-2 py-0.5 bg-[#151924] border border-[#262C3D] text-neutral-300 truncate max-w-[140px] sm:max-w-none">
                 {state.activeCategory === 'va_chart'
                   ? `${state.optotypeSet.toUpperCase()} • ${state.isolationMode.toUpperCase()}`
                   : state.activeCategory.replace('_', ' ').toUpperCase()}
               </span>
               {state.crowdingMode !== 'none' && state.activeCategory === 'va_chart' && (
-                <span className="px-2 py-0.5 bg-emerald-950/80 border border-emerald-600/50 text-emerald-300">
-                  CROWD {state.crowdingMode.replace('bars_', '')}
+                <span className="px-1.5 sm:px-2 py-0.5 bg-emerald-950/80 border border-emerald-600/50 text-emerald-300">
+                  CROWD
                 </span>
               )}
               {state.duochromeOverlay !== 'none' && (
-                <span className="px-2 py-0.5 bg-red-950/80 border border-red-500/50 text-red-300">
+                <span className="px-1.5 sm:px-2 py-0.5 bg-red-950/80 border border-red-500/50 text-red-300">
                   {state.duochromeOverlay.toUpperCase()}
                 </span>
               )}
               {state.invertPolarity && (
-                <span className="px-2 py-0.5 bg-white text-black font-bold">INVERT</span>
+                <span className="px-1.5 sm:px-2 py-0.5 bg-white text-black font-bold">INV</span>
               )}
             </div>
           </div>
@@ -812,7 +967,7 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
           {/* Live Optical Viewport (Un-Mirrored Clinician Stage) - Disabled when Floating Preview is Active */}
           {isPreviewOpen ? (
             <div
-              className="bg-[#0B0D12] border border-[#1A202C] p-4 flex flex-col items-center justify-center text-center gap-2 font-mono min-h-[140px] rounded-xs select-none"
+              className="bg-[#0B0D12] border border-[#1A202C] p-3 sm:p-4 flex flex-col items-center justify-center text-center gap-2 font-mono min-h-[120px] sm:min-h-[140px] rounded-xs select-none"
               data-testid="inline-preview-disabled"
             >
               <div className="flex items-center gap-2 text-amber-400 text-xs font-bold tracking-wider uppercase">
@@ -828,7 +983,7 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
               <button
                 type="button"
                 onClick={() => setIsPreviewOpen(false)}
-                className="mt-1 px-3 py-1.5 bg-[#141824] hover:bg-[#1E2436] border border-[#2B3448] hover:border-amber-400/60 text-neutral-300 hover:text-white text-xs font-bold rounded-xs cursor-pointer transition flex items-center gap-1.5"
+                className="mt-1 px-3 py-1.5 bg-[#141824] hover:bg-[#1E2436] active:bg-amber-500 active:text-black border border-[#2B3448] hover:border-amber-400/60 text-neutral-300 hover:text-white text-xs font-bold rounded-xs cursor-pointer transition flex items-center gap-1.5 touch-manipulation"
               >
                 <span>ENABLE INLINE VIEW</span>
                 <span className="text-[10px] text-neutral-500">(Closes Floating Preview)</span>
@@ -858,16 +1013,89 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
             </div>
           )}
 
+          {/* Quick Optotype & Aperture Switcher Bar for Touchscreens / Mobile */}
+          {state.activeCategory === 'va_chart' && (
+            <div className="bg-[#0B0D13] border border-[#1E2330] p-2 flex flex-col gap-1.5 font-mono text-[10px]">
+              <div className="flex items-center justify-between text-neutral-400 text-[9px] uppercase tracking-wider">
+                <span>QUICK OPTOTYPE &amp; APERTURE</span>
+                <span className="text-amber-400 font-bold truncate ml-2">
+                  {state.optotypeSet.toUpperCase()} • {state.isolationMode.toUpperCase()}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
+                {(
+                  [
+                    { id: 'sloan', label: 'SLOAN' },
+                    { id: 'snellen', label: 'SNELLEN' },
+                    { id: 'tumbling_e', label: 'TUMB E' },
+                    { id: 'landolt_c', label: 'LAND C' },
+                    { id: 'numbers', label: 'NUM' },
+                    { id: 'hotv', label: 'HOTV' },
+                  ] as Array<{ id: OptotypeSetId; label: string }>
+                ).map((set) => (
+                  <button
+                    key={set.id}
+                    type="button"
+                    onClick={() =>
+                      updateState({
+                        optotypeSet: set.id,
+                        activeLetterIndex: 0,
+                        currentLineScores: [
+                          'untested',
+                          'untested',
+                          'untested',
+                          'untested',
+                          'untested',
+                        ],
+                      })
+                    }
+                    className={`px-2 py-1 border text-[10px] uppercase font-bold cursor-pointer touch-manipulation active:scale-95 ${
+                      state.optotypeSet === set.id
+                        ? 'bg-amber-500 border-amber-400 text-black'
+                        : 'bg-[#141822] border-[#22293A] text-neutral-300 hover:text-white'
+                    }`}
+                  >
+                    {set.label}
+                  </button>
+                ))}
+                <div className="h-4 w-px bg-[#22293A] mx-0.5 hidden xs:block" />
+                {(
+                  [
+                    { id: 'full', label: 'FULL' },
+                    { id: 'row', label: 'ROW' },
+                    { id: 'single', label: 'ISO 1' },
+                    { id: 'column', label: 'COL' },
+                  ] as Array<{ id: ChartIsolationMode; label: string }>
+                ).map((mode) => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => updateState({ isolationMode: mode.id })}
+                    className={`px-2 py-1 border text-[10px] uppercase font-bold cursor-pointer touch-manipulation active:scale-95 ${
+                      state.isolationMode === mode.id
+                        ? 'bg-emerald-600 border-emerald-500 text-white'
+                        : 'bg-[#141822] border-[#22293A] text-neutral-300 hover:text-white'
+                    }`}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Target Answer Keystrip & Scoring (VA Chart & eETDRS only) */}
           {(state.activeCategory === 'va_chart' ||
             state.activeCategory === 'etdrs_wizard') && (
-            <div className="bg-[#0D0F14] border border-[#1E2330] p-2.5 space-y-2 font-mono">
-              <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-neutral-400">
-                <span>TARGET VERIFICATION & SCORING KEYS [1–5]</span>
-                <div className="flex items-center gap-1.5">
+            <div className="bg-[#0D0F14] border border-[#1E2330] p-2 sm:p-2.5 space-y-2 font-mono">
+              <div className="flex flex-wrap items-center justify-between gap-1 text-[10px] uppercase tracking-wider text-neutral-400">
+                <div className="flex items-center gap-1.5 font-bold text-neutral-300">
+                  <span>SCORING &amp; TARGET KEYS [1–5]</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1">
                   {(state.isolationMode === 'single' ||
                     state.isolationMode === 'column') && (
-                    <>
+                    <div className="flex border border-[#2C3244]">
                       <button
                         type="button"
                         onClick={() =>
@@ -877,9 +1105,10 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                               activeSymbols.length,
                           })
                         }
-                        className="px-2 py-0.5 bg-[#161923] hover:bg-[#232838] border border-[#2C3244] text-neutral-200 cursor-pointer"
+                        className="px-2 py-1 bg-[#161923] hover:bg-[#232838] text-neutral-200 cursor-pointer touch-manipulation active:scale-95"
+                        title="Previous letter ([)"
                       >
-                        ◄ [
+                        ◄
                       </button>
                       <button
                         type="button"
@@ -889,29 +1118,49 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                               (state.activeLetterIndex + 1) % activeSymbols.length,
                           })
                         }
-                        className="px-2 py-0.5 bg-[#161923] hover:bg-[#232838] border border-[#2C3244] text-neutral-200 cursor-pointer"
+                        className="px-2 py-1 bg-[#161923] hover:bg-[#232838] border-l border-[#2C3244] text-neutral-200 cursor-pointer touch-manipulation active:scale-95"
+                        title="Next letter (])"
                       >
-                        ] ►
+                        ►
                       </button>
-                    </>
+                    </div>
                   )}
                   <button
                     type="button"
                     onClick={handleMarkAllCorrect}
-                    className="px-2 py-0.5 bg-[#12221D] hover:bg-[#193029] border border-emerald-600/50 text-emerald-300 cursor-pointer"
+                    className="px-2 py-1 bg-[#12221D] hover:bg-[#193029] active:bg-emerald-500 active:text-black border border-emerald-600/50 text-emerald-300 font-bold cursor-pointer touch-manipulation active:scale-95"
+                    title="Mark all 5 letters correct"
                   >
                     ALL ✓
                   </button>
                   <button
                     type="button"
-                    onClick={randomizeOptotypes}
-                    className="px-3 py-0.5 bg-amber-500 hover:bg-amber-400 text-black font-bold cursor-pointer"
+                    onClick={handleMarkAllIncorrect}
+                    className="px-2 py-1 bg-[#271216] hover:bg-[#381920] active:bg-red-500 active:text-white border border-red-600/50 text-red-300 font-bold cursor-pointer touch-manipulation active:scale-95"
+                    title="Mark all 5 letters incorrect"
                   >
-                    RANDOMIZE [SPACE]
+                    ALL ✕
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResetLineScores}
+                    className="px-2 py-1 bg-[#141824] hover:bg-[#1D2334] border border-[#2A3348] text-neutral-400 hover:text-white cursor-pointer touch-manipulation active:scale-95"
+                    title="Reset line scores to untested"
+                  >
+                    ↺
+                  </button>
+                  <button
+                    type="button"
+                    onClick={randomizeOptotypes}
+                    className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 active:bg-amber-300 text-black font-bold cursor-pointer touch-manipulation active:scale-95"
+                    title="Randomize optotypes (Space)"
+                  >
+                    RANDOM
                   </button>
                 </div>
               </div>
 
+              {/* Large Touch-Friendly Scoring Button Grid (1-5) */}
               <div className="grid grid-cols-5 gap-1.5">
                 {activeSymbols.map((sym, idx) => {
                   const cheat = getDoctorCheatLabel(sym);
@@ -935,10 +1184,10 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                     'bg-[#131720] border-[#252B3B] text-white hover:bg-[#1B202D]';
                   if (status === 'correct') {
                     keyStyle =
-                      'bg-[#0E231C] border-emerald-500 text-emerald-300 border-t-2 border-t-emerald-400';
+                      'bg-[#0E231C] border-emerald-500 text-emerald-300 border-t-2 border-t-emerald-400 shadow-[inset_0_0_12px_rgba(16,185,129,0.15)]';
                   } else if (status === 'incorrect') {
                     keyStyle =
-                      'bg-[#271216] border-red-500 text-red-300 border-t-2 border-t-red-400';
+                      'bg-[#271216] border-red-500 text-red-300 border-t-2 border-t-red-400 shadow-[inset_0_0_12px_rgba(239,68,68,0.15)]';
                   }
 
                   return (
@@ -946,17 +1195,18 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                       key={`${idx}-${sym}`}
                       type="button"
                       onClick={() => handleLetterScoreTap(idx)}
-                      className={`relative flex flex-col items-center justify-center py-2.5 px-1 border transition cursor-pointer ${keyStyle} ${
-                        isTarget ? 'ring-1 ring-amber-400' : ''
+                      className={`relative flex flex-col items-center justify-center min-h-[58px] sm:min-h-[52px] py-2 px-1 border transition cursor-pointer touch-manipulation active:scale-95 select-none ${keyStyle} ${
+                        isTarget ? 'ring-2 ring-amber-400' : ''
                       }`}
+                      title={`Letter ${idx + 1}: ${cheat.primary}. Tap to cycle Untested -> Correct -> Incorrect`}
                     >
-                      <span className="absolute top-1 left-1.5 text-[9px] text-neutral-500">
+                      <span className="absolute top-1 left-1.5 text-[9px] text-neutral-500 font-bold">
                         {idx + 1}
                       </span>
-                      <span className="absolute top-1 right-1.5 text-[10px] font-bold">
+                      <span className="absolute top-1 right-1.5 text-[11px] font-black">
                         {status === 'correct' ? '✓' : status === 'incorrect' ? '✕' : ''}
                       </span>
-                      <span className="text-lg font-black tracking-tight mt-1">
+                      <span className="text-xl sm:text-lg font-black tracking-tight mt-0.5">
                         {cheat.primary}
                       </span>
                       {cheat.hint && (
@@ -968,19 +1218,43 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
                   );
                 })}
               </div>
+
+              {/* Quick Stepper Bar on Center Bay for Fast Touch Acuity Progression */}
+              <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-[#1C2230]">
+                <button
+                  type="button"
+                  onClick={() => stepAcuitySize('larger')}
+                  className="py-2 bg-[#151924] hover:bg-[#1E2436] active:bg-amber-500 active:text-black border border-[#2B354A] text-xs font-bold text-neutral-200 uppercase tracking-wider cursor-pointer touch-manipulation flex items-center justify-center gap-1"
+                >
+                  ▲ LARGER SIZE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => stepAcuitySize('smaller')}
+                  className="py-2 bg-[#151924] hover:bg-[#1E2436] active:bg-amber-500 active:text-black border border-[#2B354A] text-xs font-bold text-neutral-200 uppercase tracking-wider cursor-pointer touch-manipulation flex items-center justify-center gap-1"
+                >
+                  ▼ SMALLER SIZE
+                </button>
+              </div>
             </div>
           )}
 
           {/* DIGITAL PHOROPTER REFRACTION CONSOLE */}
-          <DigitalPhoropterConsole
-            state={state}
-            updateState={updateState}
-            className="rounded border border-[#1E2330]"
-          />
+          <div className={`${mobileBayTab === 'chart_score' ? 'hidden md:block' : 'block'}`}>
+            <DigitalPhoropterConsole
+              state={state}
+              updateState={updateState}
+              className="rounded border border-[#1E2330]"
+            />
+          </div>
         </section>
 
-        {/* RIGHT BAY (4 cols): CONTEXT-SENSITIVE SELECTORS & CONTROLS */}
-        <section className="lg:col-span-4 flex flex-col gap-2 font-mono">
+        {/* RIGHT BAY: CONTEXT-SENSITIVE SELECTORS & CONTROLS */}
+        <section
+          className={`${
+            mobileBayTab === 'modes' || mobileBayTab === 'all' ? 'flex' : 'hidden'
+          } md:flex md:col-span-12 xl:col-span-4 flex-col gap-2 font-mono`}
+        >
           {/* ========================================================================= */}
           {/* 1. VA CHART MODE: OPTOTYPE SELECTOR, APERTURE, CROWDING, FILTERS, MACROS  */}
           {/* ========================================================================= */}
@@ -2065,6 +2339,175 @@ export const DoctorControllerView: React.FC<DoctorControllerViewProps> = ({
         networkInfo={networkInfo}
         onSelectIp={onRefreshNetworkInfo}
       />
+
+      {/* MOBILE FLOATING BOTTOM THUMB BAR (< md) */}
+      <aside
+        aria-label="Mobile Quick Stepper"
+        className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-[#0A0C10]/95 border-t border-[#1E2330] p-1.5 flex items-center justify-between gap-1.5 backdrop-blur-md font-mono text-xs select-none"
+      >
+        <button
+          type="button"
+          onClick={() => stepAcuitySize('larger')}
+          className="flex-1 py-2.5 bg-[#141824] hover:bg-[#1E2436] active:bg-amber-500 active:text-black border border-[#2B3448] text-white font-bold rounded-xs cursor-pointer touch-manipulation flex items-center justify-center gap-1 shadow-sm"
+        >
+          ▲ LARGER
+        </button>
+        <button
+          type="button"
+          onClick={() => stepAcuitySize('smaller')}
+          className="flex-1 py-2.5 bg-[#141824] hover:bg-[#1E2436] active:bg-amber-500 active:text-black border border-[#2B3448] text-white font-bold rounded-xs cursor-pointer touch-manipulation flex items-center justify-center gap-1 shadow-sm"
+        >
+          ▼ SMALLER
+        </button>
+        <button
+          type="button"
+          onClick={randomizeOptotypes}
+          className="py-2.5 px-3 bg-amber-500 hover:bg-amber-400 active:bg-amber-300 text-black font-black rounded-xs cursor-pointer touch-manipulation flex items-center justify-center shadow-sm"
+          title="Randomize optotypes"
+          aria-label="Randomize"
+        >
+          🎲
+        </button>
+        <button
+          type="button"
+          onClick={handleMarkAllCorrect}
+          className="py-2.5 px-3.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-400 text-white font-black rounded-xs cursor-pointer touch-manipulation flex items-center justify-center shadow-sm"
+          title="Mark all 5 letters correct"
+          aria-label="All Correct"
+        >
+          ✓ ALL
+        </button>
+      </aside>
+
+      {/* MOBILE SETTINGS & REMOTE ACTIONS DRAWER */}
+      {isMobileDrawerOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Mobile Settings and Remote Actions"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-2 sm:p-4 select-none font-mono"
+          onClick={() => setIsMobileDrawerOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-[#0B0D13] border border-[#262D3E] shadow-2xl rounded-sm p-4 space-y-3.5 text-xs text-neutral-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-[#1E2434] pb-2">
+              <span className="font-bold text-amber-400 text-sm tracking-wider uppercase">
+                EXAM CONSOLE MENU
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsMobileDrawerOpen(false)}
+                className="p-1 text-neutral-400 hover:text-white text-base leading-none cursor-pointer"
+                aria-label="Close menu"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Notation Selection */}
+            <div className="space-y-1.5">
+              <span className="text-[10px] text-neutral-400 uppercase tracking-wider">
+                ACUITY NOTATION
+              </span>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(
+                  [
+                    { id: 'snellen_us', label: 'Snellen 20/XX' },
+                    { id: 'snellen_metric', label: 'Metric 6/XX' },
+                    { id: 'decimal', label: 'Decimal (1.0)' },
+                    { id: 'logmar', label: 'LogMAR (0.0)' },
+                  ] as Array<{ id: AcuityNotation; label: string }>
+                ).map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => updateState({ doctorNotation: n.id })}
+                    className={`py-2 px-2 border text-center font-bold text-xs cursor-pointer touch-manipulation ${
+                      state.doctorNotation === n.id
+                        ? 'bg-amber-500 border-amber-400 text-black'
+                        : 'bg-[#12151E] border-[#1F2636] text-neutral-300 hover:text-white'
+                    }`}
+                  >
+                    {n.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Remote & Displays */}
+            <div className="space-y-1.5 pt-1 border-t border-[#1A1F2C]">
+              <span className="text-[10px] text-neutral-400 uppercase tracking-wider">
+                DISPLAYS &amp; REMOTE
+              </span>
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileDrawerOpen(false);
+                    onOpenPatientView?.();
+                  }}
+                  className="w-full py-2.5 px-3 bg-[#131824] hover:bg-[#1B2234] border border-[#273044] text-amber-400 font-bold text-left flex items-center justify-between cursor-pointer touch-manipulation"
+                >
+                  <span>📺 LAUNCH PATIENT SCREEN</span>
+                  <span className="text-[10px] text-neutral-500">NEW TAB</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileDrawerOpen(false);
+                    setIsQrOpen(true);
+                  }}
+                  className="w-full py-2.5 px-3 bg-[#131824] hover:bg-[#1B2234] border border-[#273044] text-neutral-200 font-bold text-left flex items-center justify-between cursor-pointer touch-manipulation"
+                >
+                  <span>📱 PAIR PHONE / QR CODE</span>
+                  <span className="text-[10px] text-neutral-500">REMOTE</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileDrawerOpen(false);
+                    setIsSettingsOpen(true);
+                  }}
+                  className="w-full py-2.5 px-3 bg-[#131824] hover:bg-[#1B2234] border border-[#273044] text-neutral-200 font-bold text-left flex items-center justify-between cursor-pointer touch-manipulation"
+                >
+                  <span>⚙️ CALIBRATION &amp; DISTANCE</span>
+                  <span className="text-[10px] text-neutral-500">CONFIG</span>
+                </button>
+              </div>
+            </div>
+
+            {/* System Actions */}
+            <div className="pt-2 border-t border-[#1A1F2C] flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    typeof window !== 'undefined' &&
+                    window.confirm('Reset current clinical examination session?')
+                  ) {
+                    resetSession();
+                    setIsMobileDrawerOpen(false);
+                  }
+                }}
+                className="py-1.5 px-2.5 bg-red-950/60 hover:bg-red-900 border border-red-800/60 text-red-300 text-[11px] font-bold cursor-pointer touch-manipulation"
+              >
+                RESET SESSION
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsMobileDrawerOpen(false)}
+                className="py-1.5 px-3 bg-[#191F2C] text-neutral-300 hover:text-white border border-[#2B3548] text-[11px] font-bold cursor-pointer touch-manipulation"
+              >
+                DONE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

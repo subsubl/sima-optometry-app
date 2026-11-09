@@ -43,11 +43,19 @@ export const MiniPatientPreview: React.FC<MiniPatientPreviewProps> = ({
   });
   const cardRef = useRef<HTMLElement>(null);
 
+  // On small mobile screens (phones / Fold cover), default to 'sm'
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 640) {
+      setSize('sm');
+    }
+  }, []);
+
   // Initialize position to bottom-right corner when mounted
   useEffect(() => {
     if (typeof window !== 'undefined' && position === null) {
       const config = SIZE_CONFIGS[size];
-      const initialX = Math.max(16, window.innerWidth - config.widthPx - 24);
+      const effectiveWidth = Math.min(config.widthPx, window.innerWidth - 16);
+      const initialX = Math.max(8, window.innerWidth - effectiveWidth - 16);
       const initialY = Math.max(70, window.innerHeight - 300);
       setPosition({ x: initialX, y: initialY });
     }
@@ -59,7 +67,8 @@ export const MiniPatientPreview: React.FC<MiniPatientPreviewProps> = ({
       setPosition((prev) => {
         if (!prev) return null;
         const config = SIZE_CONFIGS[size];
-        const maxX = Math.max(8, window.innerWidth - config.widthPx - 8);
+        const effectiveWidth = Math.min(config.widthPx, window.innerWidth - 16);
+        const maxX = Math.max(8, window.innerWidth - effectiveWidth - 8);
         const maxY = Math.max(8, window.innerHeight - 60);
         return {
           x: Math.min(Math.max(8, prev.x), maxX),
@@ -70,6 +79,17 @@ export const MiniPatientPreview: React.FC<MiniPatientPreviewProps> = ({
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [size]);
+
+  // Touchscreen Quick Snap Corner (toggles between top and bottom dock)
+  const handleSnapCorner = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const config = SIZE_CONFIGS[size];
+    const effectiveWidth = Math.min(config.widthPx, window.innerWidth - 16);
+    const snapX = Math.max(8, window.innerWidth - effectiveWidth - 12);
+    const isCurrentlyLower = (position?.y ?? 300) > window.innerHeight / 2;
+    const targetY = isCurrentlyLower ? 72 : Math.max(72, window.innerHeight - 260);
+    setPosition({ x: snapX, y: targetY });
+  }, [position, size]);
 
   // Pointer Drag Handlers (Unified Touchscreen, Stylus & Mouse)
   const handlePointerDown = useCallback(
@@ -84,8 +104,9 @@ export const MiniPatientPreview: React.FC<MiniPatientPreviewProps> = ({
         // Fallback for environments lacking pointer capture
       }
 
+      const effectiveWidth = Math.min(SIZE_CONFIGS[size].widthPx, window.innerWidth - 16);
       const currentX =
-        position?.x ?? Math.max(16, window.innerWidth - SIZE_CONFIGS[size].widthPx - 24);
+        position?.x ?? Math.max(8, window.innerWidth - effectiveWidth - 16);
       const currentY = position?.y ?? Math.max(70, window.innerHeight - 300);
 
       dragStartRef.current = {
@@ -113,7 +134,8 @@ export const MiniPatientPreview: React.FC<MiniPatientPreviewProps> = ({
       const dx = e.clientX - dragStartRef.current.pointerX;
       const dy = e.clientY - dragStartRef.current.pointerY;
       const config = SIZE_CONFIGS[size];
-      const maxX = Math.max(8, window.innerWidth - config.widthPx - 8);
+      const effectiveWidth = Math.min(config.widthPx, window.innerWidth - 16);
+      const maxX = Math.max(8, window.innerWidth - effectiveWidth - 8);
       const maxY = Math.max(8, window.innerHeight - 60);
 
       setPosition({
@@ -166,11 +188,13 @@ export const MiniPatientPreview: React.FC<MiniPatientPreviewProps> = ({
         position: 'fixed',
         left: position ? `${position.x}px` : undefined,
         top: position ? `${position.y}px` : undefined,
-        right: position ? undefined : '24px',
-        bottom: position ? undefined : '24px',
+        right: position ? undefined : '16px',
+        bottom: position ? undefined : '20px',
         width: `${currentConfig.widthPx}px`,
+        maxWidth: 'calc(100vw - 16px)',
+        maxHeight: 'calc(100vh - 40px)',
       }}
-      className={`z-50 flex flex-col bg-[#08090C]/95 border border-[#283042] shadow-[0_20px_50px_rgba(0,0,0,0.8)] rounded-sm overflow-hidden select-none backdrop-blur-md transition-shadow ${
+      className={`z-50 flex flex-col bg-[#08090C]/95 border border-[#283042] shadow-[0_20px_50px_rgba(0,0,0,0.8)] rounded-sm overflow-hidden select-none backdrop-blur-md transition-shadow touch-manipulation ${
         isDragging ? 'shadow-amber-500/20 border-amber-500/60 cursor-grabbing' : ''
       }`}
       aria-label="Floating Patient View Preview"
@@ -182,29 +206,40 @@ export const MiniPatientPreview: React.FC<MiniPatientPreviewProps> = ({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         style={{ touchAction: 'none' }}
-        className="bg-[#0E1118] border-b border-[#1E2535] px-2.5 py-1.5 flex items-center justify-between gap-1.5 cursor-grab active:cursor-grabbing font-mono text-[11px] touch-none select-none"
+        className="bg-[#0E1118] border-b border-[#1E2535] px-2 py-1.5 flex items-center justify-between gap-1 cursor-grab active:cursor-grabbing font-mono text-[11px] touch-none select-none"
       >
-        <div className="flex items-center gap-1.5 pointer-events-none">
-          <span className="relative flex h-2 w-2">
+        <div className="flex items-center gap-1.5 pointer-events-none truncate mr-1">
+          <span className="relative flex h-2 w-2 shrink-0">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
           </span>
-          <span className="font-bold tracking-wider text-neutral-200 text-[10px] uppercase">
+          <span className="font-bold tracking-wider text-neutral-200 text-[10px] uppercase truncate">
             PATIENT PREVIEW
           </span>
-          <span className="text-[9px] px-1 py-0.2 bg-emerald-950/80 text-emerald-300 border border-emerald-700/40 rounded-xs uppercase">
+          <span className="text-[9px] px-1 py-0.2 bg-emerald-950/80 text-emerald-300 border border-emerald-700/40 rounded-xs uppercase shrink-0">
             LIVE
           </span>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Quick Corner Snap for Touchscreens */}
+          <button
+            type="button"
+            onClick={handleSnapCorner}
+            className="px-1.5 py-0.5 bg-[#141824] hover:bg-[#1E2436] active:bg-amber-500 active:text-black text-[10px] font-bold text-neutral-300 hover:text-white border border-[#232B3E] rounded-xs cursor-pointer touch-manipulation"
+            title="Snap to opposite corner (top/bottom)"
+            aria-label="Snap Corner"
+          >
+            ↕
+          </button>
+
           {/* Size Cycle */}
           <button
             type="button"
             onClick={() => {
               setSize((prev) => (prev === 'sm' ? 'md' : prev === 'md' ? 'lg' : 'sm'));
             }}
-            className="px-1.5 py-0.5 bg-[#141824] hover:bg-[#1E2436] text-[10px] font-bold text-neutral-300 hover:text-white border border-[#232B3E] rounded-xs cursor-pointer"
+            className="px-1.5 py-0.5 bg-[#141824] hover:bg-[#1E2436] active:bg-amber-500 active:text-black text-[10px] font-bold text-neutral-300 hover:text-white border border-[#232B3E] rounded-xs cursor-pointer touch-manipulation"
             title={`Current size: ${currentConfig.label}. Click to cycle (SM -> MD -> LG)`}
           >
             {currentConfig.label}
@@ -215,7 +250,7 @@ export const MiniPatientPreview: React.FC<MiniPatientPreviewProps> = ({
             <button
               type="button"
               onClick={onOpenExternal}
-              className="p-1 bg-[#141824] hover:bg-[#1E2436] text-neutral-300 hover:text-amber-400 border border-[#232B3E] rounded-xs cursor-pointer"
+              className="p-1 bg-[#141824] hover:bg-[#1E2436] text-neutral-300 hover:text-amber-400 border border-[#232B3E] rounded-xs cursor-pointer touch-manipulation"
               title="Open Patient Display in New Window"
               aria-label="Open in new window"
             >
@@ -240,7 +275,7 @@ export const MiniPatientPreview: React.FC<MiniPatientPreviewProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1 bg-[#141824] hover:bg-red-950 text-neutral-400 hover:text-red-300 border border-[#232B3E] rounded-xs cursor-pointer"
+            className="p-1 bg-[#141824] hover:bg-red-950 text-neutral-400 hover:text-red-300 border border-[#232B3E] rounded-xs cursor-pointer touch-manipulation"
             title="Turn Off Preview (Toggle via top bar [PREVIEW [P]])"
             aria-label="Close"
           >

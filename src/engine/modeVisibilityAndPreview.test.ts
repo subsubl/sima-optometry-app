@@ -233,4 +233,86 @@ describe('Context-Sensitive Mode Visibility & Mini Patient Preview Verification'
       expect(html).not.toContain('data-testid="inline-preview-active"');
     });
   });
+
+  describe('4. Touchscreen, Phone & Samsung Fold7 Tablet Ergonomics', () => {
+    it('renders mobile segmented bay switcher for phones and narrow fold screens', () => {
+      const html = renderToString(React.createElement(DoctorControllerView, {
+        state: DEFAULT_EXAM_STATE,
+        ...dummyProps,
+      }));
+
+      expect(html).toContain('aria-label="Mobile Clinical Bays"');
+      expect(html).toContain('🎯 CHART');
+      expect(html).toContain('📏 SIZES');
+      expect(html).toContain('🔬 PHOR');
+      expect(html).toContain('⚙️ MODES');
+      expect(html).toContain('📋 ALL');
+    });
+
+    it('renders mobile floating bottom thumb bar for fast one-handed clinical scoring', () => {
+      const html = renderToString(React.createElement(DoctorControllerView, {
+        state: DEFAULT_EXAM_STATE,
+        ...dummyProps,
+      }));
+
+      expect(html).toContain('aria-label="Mobile Quick Stepper"');
+      expect(html).toContain('▲ LARGER');
+      expect(html).toContain('▼ SMALLER');
+      expect(html).toContain('aria-label="Randomize"');
+      expect(html).toContain('aria-label="All Correct"');
+    });
+
+    it('renders quick optotype and aperture switcher pills in center bay during VA chart mode', () => {
+      const vaState: ExamState = {
+        ...DEFAULT_EXAM_STATE,
+        activeCategory: 'va_chart',
+      };
+
+      const html = renderToString(React.createElement(DoctorControllerView, {
+        state: vaState,
+        ...dummyProps,
+      }));
+
+      expect(html).toContain('QUICK OPTOTYPE &amp; APERTURE');
+      expect(html).toContain('TUMB E');
+      expect(html).toContain('LAND C');
+      expect(html).toContain('ISO 1');
+    });
+
+    it('provides multi-score helper buttons (ALL ✓, ALL ✕, ↺) and large touch scoring keys', () => {
+      const html = renderToString(React.createElement(DoctorControllerView, {
+        state: DEFAULT_EXAM_STATE,
+        ...dummyProps,
+      }));
+
+      expect(html).toContain('ALL ✓');
+      expect(html).toContain('ALL ✕');
+      expect(html).toContain('title="Reset line scores to untested"');
+      expect(html).toContain('touch-manipulation');
+    });
+
+    it('includes responsive dual-column grid classes for Samsung Fold 4:3 / 21.6:18 tablets', () => {
+      const html = renderToString(React.createElement(DoctorControllerView, {
+        state: DEFAULT_EXAM_STATE,
+        ...dummyProps,
+      }));
+
+      // Fold tablet dual-column layout classes
+      expect(html).toContain('md:grid-cols-12');
+      expect(html).toContain('md:col-span-5');
+      expect(html).toContain('md:col-span-7');
+      expect(html).toContain('md:col-span-12');
+    });
+
+    it('includes corner snap docking button in mini patient preview for touchscreens', () => {
+      const html = renderToString(React.createElement(MiniPatientPreview, {
+        state: DEFAULT_EXAM_STATE,
+        isOpen: true,
+        onClose: () => {},
+      }));
+
+      expect(html).toContain('aria-label="Snap Corner"');
+      expect(html).toContain('title="Snap to opposite corner (top/bottom)"');
+    });
+  });
 });
